@@ -22,18 +22,18 @@ export class PokeBackend {
     this._listeners = new Map();
   }
 
-  addListener(spaceID: string, listener: () => void) {
-    let set = this._listeners.get(spaceID);
+  addListener(channel: string, listener: () => void) {
+    let set = this._listeners.get(channel);
     if (!set) {
       set = new Set();
-      this._listeners.set(spaceID, set);
+      this._listeners.set(channel, set);
     }
     set.add(listener);
-    return () => this._removeListener(spaceID, listener);
+    return () => this._removeListener(channel, listener);
   }
 
-  poke(spaceID: string) {
-    const set = this._listeners.get(spaceID);
+  poke(channel: string) {
+    const set = this._listeners.get(channel);
     if (!set) {
       return;
     }
@@ -46,8 +46,8 @@ export class PokeBackend {
     }
   }
 
-  private _removeListener(spaceID: string, listener: () => void) {
-    const set = this._listeners.get(spaceID);
+  private _removeListener(channel: string, listener: () => void) {
+    const set = this._listeners.get(channel);
     if (!set) {
       return;
     }

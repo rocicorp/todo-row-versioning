@@ -1,1 +1,138 @@
 @import 'todomvc-app-css/index.css';
+
+body,
+#root {
+  max-width: 1000px;
+}
+
+#layout {
+  display: flex;
+  flex-direction: row;
+  gap: 30px;
+}
+
+#nav {
+  display: flex;
+  flex-direction: column;
+  width: 150px;
+  font-size: 125%;
+  padding-top: 155px;
+}
+
+#layout .spacer {
+  width: 150px;
+}
+
+.todoapp {
+  flex: 1;
+  margin-top: 150px;
+}
+
+.todoapp h1 {
+  top: -155px !important;
+}
+
+#nav a {
+  display: block;
+  margin-bottom: 0.6em;
+  text-align: right;
+}
+
+#toolbar {
+  display: flex;
+  flex-direction: row;
+  justify-content: stretch;
+  position: absolute;
+  width: 100%;
+  top: -2.8em;
+  align-items: center;
+  font-size: 110%;
+}
+
+#toolbar #login {
+  display: flex;
+  flex-direction: row;
+  justify-content: start;
+  font-size: 110%;
+}
+
+#toolbar #buttons {
+  display: flex;
+  flex-direction: row;
+  justify-content: end;
+  align-items: center;
+  flex: 1;
+}
+
+#toolbar label {
+  margin-right: 1ex;
+}
+
+#toolbar input[type='button'] {
+  font-size: 110%;
+  margin-left: 1.5ex;
+  padding: 0.5ex 1.3ex;
+}
+
+#no-list-selected {
+  padding: 1em 2em;
+  font-size: 120%;
+}
+
+#share-overlay {
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  left: 0px;
+  top: 0px;
+  background-color: rgba(0, 0, 0, 0.3);
+  z-index: 10000;
+}
+
+#share-content {
+  position: fixed;
+  width: 300px;
+  left: 50%;
+  margin-left: -180px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.25);
+  padding: 0 30px 30px 30px;
+  background: white;
+  z-index: 10001;
+}
+
+#share-content form {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 1ex;
+}
+
+#share-content form input[type='text'] {
+  flex: 1;
+  font-size: 1.2em;
+}
+
+#share-content h1 {
+  font-size: 1.5em;
+  margin-top: 1.5em;
+}
+
+#share-content table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#share-content td {
+  padding: 1ex 2ex;
+  border: 1px solid lightgray;
+}
+
+#share-content td:last-child {
+  text-align: center;
+  width: 0;
+}
+
+#share-content .destroy {
+  color: red;
+  font-weight: bold;
+}

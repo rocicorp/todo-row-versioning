@@ -1,37 +1,78 @@
 import TodoTextInput from './todo-text-input';
-import type {Extent} from 'shared/src/extent';
 
 const Header = ({
-  extent,
-  onUpdateExtent,
+  listName,
+  userID,
   onNewItem,
+  onNewList,
+  onDeleteList,
+  onUserIDChange,
+  onShare,
 }: {
-  extent: Extent | undefined;
-  onUpdateExtent: (extent: Partial<Extent>) => void;
+  listName: string | undefined;
+  userID: string;
   onNewItem: (text: string) => void;
-}) => (
-  <header className="header">
-    <h1>todos</h1>
-    <div style={{position: 'absolute', top: '-30px'}}>
-      <input
-        type="checkbox"
-        checked={extent?.includeComplete ?? false}
-        id="include-complete"
-        onChange={() =>
-          onUpdateExtent({
-            includeComplete: !extent?.includeComplete,
-          })
-        }
-        style={{marginRight: '0.5em'}}
-      />
-      <label htmlFor="include-complete">Include completed</label>
-    </div>
-    <TodoTextInput
-      initial=""
-      placeholder="What needs to be done?"
-      onSubmit={onNewItem}
-    />
-  </header>
-);
+  onNewList: (text: string) => void;
+  onDeleteList: () => void;
+  onUserIDChange: (userID: string) => void;
+  onShare: () => void;
+}) => {
+  const handleNewList = () => {
+    const name = prompt('Enter a new list name');
+    if (name) {
+      onNewList(name);
+    }
+  };
+
+  const handleDeleteList = () => {
+    if (!confirm('Really delete current list?')) {
+      return;
+    }
+    onDeleteList();
+  };
+
+  return (
+    <header className="header">
+      <h1>{listName ?? 'todos'}</h1>
+      <div id="toolbar">
+        <div id="login">
+          UserID:&nbsp;
+          <input
+            type="text"
+            id="userID"
+            value={userID}
+            onChange={e => onUserIDChange(e.target.value)}
+          />
+        </div>
+        <div id="buttons">
+          <input
+            type="button"
+            onClick={() => handleNewList()}
+            value="New List"
+          />
+          <input
+            type="button"
+            value="Delete List"
+            disabled={!listName}
+            onClick={() => handleDeleteList()}
+          />
+          <input
+            type="button"
+            value="Share"
+            disabled={!listName}
+            onClick={() => onShare()}
+          />
+        </div>
+      </div>
+      {listName && (
+        <TodoTextInput
+          initial=""
+          placeholder="What needs to be done?"
+          onSubmit={onNewItem}
+        />
+      )}
+    </header>
+  );
+};
 
 export default Header;

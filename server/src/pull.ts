@@ -1,82 +1,158 @@
-import {transact} from './pg.js';
-import {
-  getPatch,
-  getLastMutationID,
-  ClientViewRecord,
-  getEntry,
-} from './data.js';
 import {z} from 'zod';
-import type {PullResponse} from 'replicache';
+import type {PatchOperation, PullResponse, PullResponseOKV1} from 'replicache';
 import type Express from 'express';
-import {nanoid} from 'nanoid';
-import type {Extent} from 'shared';
+import {transact} from './pg';
+import {
+  getClientGroupForUpdate,
+  getLists,
+  getShares,
+  getTodos,
+  putClientGroup,
+  searchClients,
+  searchLists,
+  searchShares,
+  searchTodos,
+} from './data';
+import {ClientViewData} from './cvr';
 
 const pullRequest = z.object({
-  clientID: z.string(),
-  cookie: z.union([z.string(), z.null()]),
+  clientGroupID: z.string(),
+  cookie: z.any(),
 });
 
+type ClientViewRecord = {
+  list: ClientViewData;
+  todo: ClientViewData;
+  share: ClientViewData;
+  clientVersion: number;
+};
+
+// cvrKey -> ClientViewRecord
 const cvrCache = new Map<string, ClientViewRecord>();
 
 export async function pull(
-  spaceID: string,
   userID: string,
   requestBody: Express.Request,
 ): Promise<PullResponse> {
   console.log(`Processing pull`, JSON.stringify(requestBody, null, ''));
 
   const pull = pullRequest.parse(requestBody);
-  const requestCookie = pull.cookie;
 
-  console.log('spaceID', spaceID);
-  console.log('clientID', pull.clientID);
+  const {clientGroupID} = pull;
+  const prevCVR = cvrCache.get(makeCVRKey(clientGroupID, pull.cookie));
+  const baseCVR = prevCVR ?? {
+    list: new ClientViewData(),
+    todo: new ClientViewData(),
+    share: new ClientViewData(),
+    clientVersion: 0,
+  };
+  console.log({prevCVR, baseCVR});
 
-  const t0 = Date.now();
+  const {nextCVRVersion, nextCVR, clientChanges, lists, shares, todos} =
+    await transact(async executor => {
+      const [baseClientGroupRecord, clientChanges, listMeta] =
+        await Promise.all([
+          getClientGroupForUpdate(executor, clientGroupID),
+          searchClients(executor, {
+            clientGroupID,
+            sinceClientVersion: baseCVR.clientVersion,
+          }),
+          searchLists(executor, {accessibleByUserID: userID}),
+        ]);
 
-  const prevCVR = requestCookie ? cvrCache.get(requestCookie) : undefined;
+      console.log({baseClientGroupRecord, clientChanges, listMeta});
 
-  const [{patch, cvr: nextCVR}, lastMutationID] = await transact(
-    async executor => {
-      // TODO: It would be nice to implement Replicache's ReadTransaction too,
-      // so that we could reuse getEntry() from shared.
-      const {value: extent} = ((await getEntry(
-        executor,
-        spaceID,
-        `extent/${userID}`,
-      )) ?? {value: {}}) as {value: Extent};
-
-      return Promise.all([
-        getPatch(
-          executor,
-          spaceID,
-          userID,
-          {
-            whereComplete: extent?.includeComplete ? undefined : false,
-          },
-          prevCVR,
-          nanoid,
-        ),
-        getLastMutationID(executor, pull.clientID),
+      // TODO: Should be able to do this join in the database and eliminate a round-trip.
+      const listIDs = listMeta.map(l => l.id);
+      const [todoMeta, shareMeta] = await Promise.all([
+        searchTodos(executor, {listIDs}),
+        searchShares(executor, {listIDs}),
       ]);
-    },
-  );
 
-  console.log('lastMutationID: ', lastMutationID);
-  console.log('nextCVR.id: ', nextCVR.id);
-  console.log('Read all objects in', Date.now() - t0);
+      console.log({todoMeta, shareMeta});
 
-  if (prevCVR) {
-    cvrCache.delete(prevCVR.id);
+      const nextCVR: ClientViewRecord = {
+        list: ClientViewData.fromSearchResult(listMeta),
+        todo: ClientViewData.fromSearchResult(todoMeta),
+        share: ClientViewData.fromSearchResult(shareMeta),
+        clientVersion: baseClientGroupRecord.clientVersion,
+      };
+
+      const listPuts = nextCVR.list.getPutsSince(baseCVR.list);
+      const sharePuts = nextCVR.share.getPutsSince(baseCVR.share);
+      const todoPuts = nextCVR.todo.getPutsSince(baseCVR.todo);
+
+      const nextClientGroupRecord = {
+        ...baseClientGroupRecord,
+        cvrVersion: baseClientGroupRecord.cvrVersion + 1,
+      };
+
+      console.log({listPuts, sharePuts, todoPuts, nextClientGroupRecord});
+
+      const [lists, shares, todos] = await Promise.all([
+        getLists(executor, listPuts),
+        getShares(executor, sharePuts),
+        getTodos(executor, todoPuts),
+        putClientGroup(executor, nextClientGroupRecord),
+      ]);
+
+      return {
+        nextCVRVersion: nextClientGroupRecord.cvrVersion,
+        nextCVR,
+        clientChanges,
+        lists,
+        shares,
+        todos,
+      };
+    });
+
+  console.log({nextCVRVersion, nextCVR, clientChanges, lists, shares, todos});
+
+  const listDels = nextCVR.list.getDelsSince(baseCVR.list);
+  const shareDels = nextCVR.share.getDelsSince(baseCVR.share);
+  const todoDels = nextCVR.todo.getDelsSince(baseCVR.todo);
+
+  console.log({listDels, shareDels, todoDels});
+
+  const patch: PatchOperation[] = [];
+
+  if (prevCVR === undefined) {
+    patch.push({op: 'clear'});
   }
 
-  cvrCache.set(nextCVR.id, nextCVR);
+  for (const id of listDels) {
+    patch.push({op: 'del', key: `list/${id}`});
+  }
+  for (const list of lists) {
+    patch.push({op: 'put', key: `list/${list.id}`, value: list});
+  }
+  for (const id of shareDels) {
+    patch.push({op: 'del', key: `share/${id}`});
+  }
+  for (const share of shares) {
+    patch.push({op: 'put', key: `share/${share.id}`, value: share});
+  }
+  for (const id of todoDels) {
+    patch.push({op: 'del', key: `todo/${id}`});
+  }
+  for (const todo of todos) {
+    patch.push({op: 'put', key: `todo/${todo.id}`, value: todo});
+  }
 
-  const resp: PullResponse = {
-    lastMutationID: lastMutationID ?? 0,
-    cookie: nextCVR.id,
+  const respCookie = nextCVRVersion;
+  const resp: PullResponseOKV1 = {
+    cookie: respCookie,
+    lastMutationIDChanges: Object.fromEntries(
+      clientChanges.map(e => [e.id, e.lastMutationID] as const),
+    ),
     patch,
   };
 
-  console.log(`Returning`, JSON.stringify(resp, null, ''));
+  cvrCache.set(makeCVRKey(clientGroupID, respCookie), nextCVR);
+
   return resp;
+}
+
+function makeCVRKey(clientGroupID: string, version: number) {
+  return `${clientGroupID}/${version}`;
 }

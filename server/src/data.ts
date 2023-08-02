@@ -1,353 +1,395 @@
-import {nanoid} from 'nanoid';
-import type {JSONValue, PatchOperation} from 'replicache';
-import {z} from 'zod';
+import type {List, Todo, TodoUpdate, Share} from 'shared';
 import type {Executor} from './pg.js';
-import type {Todo} from 'shared';
 
-export async function getEntry(
-  executor: Executor,
-  spaceID: string,
-  key: string,
-): Promise<Entry | undefined> {
-  const {rows} = await executor(
-    'select value, version from replicache_entry where spaceid = $1 and key = $2',
-    [spaceID, key],
-  );
-  const value = rows[0]?.value;
-  if (value === undefined) {
-    return undefined;
-  }
-
-  const version = rows[0].version as number;
-  return {spaceID, key, value, version};
-}
-
-export async function putEntry(
-  executor: Executor,
-  spaceID: string,
-  key: string,
-  value: JSONValue,
-): Promise<void> {
-  await executor(
-    `
-    insert into replicache_entry e (spaceid, key, value, version, lastmodified)
-    values ($1, $2, $3, 0, now())
-      on conflict (spaceid, key) do update set
-        value = $3, version = e.version + 1, lastmodified = now()
-    `,
-    // TODO: Not sure why we need to JSON.stringify() here, but do not need to JSON.parse() on read??
-    [spaceID, key, JSON.stringify(value)],
-  );
-}
-
-export async function delEntry(
-  executor: Executor,
-  spaceID: string,
-  key: string,
-): Promise<void> {
-  await executor(
-    `delete from replicache_entry where spaceid = $1 and key = $2`,
-    [spaceID, key],
-  );
-}
-
-export async function listEntries(
-  executor: Executor,
-  spaceID: string,
-  fromKey: string,
-  inKeys: string[] | undefined,
-): Promise<Entry[]> {
-  const params: unknown[] = [spaceID];
-  const filters = [`spaceid = $${params.length}`];
-
-  params.push(fromKey);
-  filters.push(`key >= $${params.length}`);
-
-  if (inKeys !== undefined) {
-    params.push(inKeys);
-    filters.push(`key = any($${params.length})`);
-  }
-
-  const {rows} = await executor(
-    `select key, value, version from replicache_entry where ${filters.join(
-      ' and ',
-    )}`,
-    params,
-  );
-
-  return rows.map(row => ({
-    spaceID,
-    key: row.key,
-    value: row.value,
-    version: row.version,
-  }));
-}
-
-export type SearchTodosOptions = {
-  returnValue?: boolean | undefined;
-  spaceID?: string | undefined;
-  fromKey?: string | undefined;
-  whereComplete?: boolean | undefined;
-  inKeys?: string[] | undefined;
+export type SearchResult = {
+  id: string;
+  rowversion: number;
 };
 
-export type Entry = {
-  key: string;
-  spaceID: string;
-  value: JSONValue | undefined;
-  version: number;
+export type ClientGroupRecord = {
+  id: string;
+  cvrVersion: number;
+  clientVersion: number;
 };
+
+export type ClientRecord = {
+  id: string;
+  clientGroupID: string;
+  lastMutationID: number;
+  clientVersion: number;
+};
+
+export type Affected = {
+  listIDs: string[];
+  userIDs: string[];
+};
+
+export async function createList(
+  executor: Executor,
+  userID: string,
+  list: List,
+): Promise<Affected> {
+  if (userID !== list.ownerID) {
+    throw new Error('Authorization error, cannot create list for other user');
+  }
+  await executor(
+    `insert into list (id, ownerid, name, rowversion, lastmodified) values ($1, $2, $3, 1, now())`,
+    [list.id, list.ownerID, list.name],
+  );
+  return {listIDs: [], userIDs: [list.ownerID]};
+}
+
+export async function deleteList(
+  executor: Executor,
+  userID: string,
+  listID: string,
+): Promise<Affected> {
+  await requireAccessToList(executor, listID, userID);
+  const userIDs = await getAccessors(executor, listID);
+  await executor(`delete from list where id = $1`, [listID]);
+  return {
+    listIDs: [],
+    userIDs,
+  };
+}
+
+export async function searchLists(
+  executor: Executor,
+  {accessibleByUserID}: {accessibleByUserID: string},
+) {
+  const {rows} = await executor(
+    `select id, rowversion from list where ownerid = $1 or ` +
+      `id in (select listid from share where userid = $1)`,
+    [accessibleByUserID],
+  );
+  return rows as SearchResult[];
+}
+
+export async function getLists(executor: Executor, listIDs: string[]) {
+  if (listIDs.length === 0) return [];
+  const {rows} = await executor(
+    `select id, name, ownerID from list where id in (${getPlaceholders(
+      listIDs.length,
+    )})`,
+    listIDs,
+  );
+  return rows.map(r => {
+    const list: List = {
+      id: r.id,
+      name: r.name,
+      ownerID: r.ownerid,
+    };
+    return list;
+  });
+}
+
+export async function createShare(
+  executor: Executor,
+  userID: string,
+  share: Share,
+): Promise<Affected> {
+  await requireAccessToList(executor, share.listID, userID);
+  await executor(
+    `insert into share (id, listid, userid, rowversion, lastmodified) values ($1, $2, $3, 1, now())`,
+    [share.id, share.listID, share.userID],
+  );
+  return {
+    listIDs: [share.listID],
+    userIDs: [share.userID],
+  };
+}
+
+export async function deleteShare(
+  executor: Executor,
+  userID: string,
+  id: string,
+): Promise<Affected> {
+  const [share] = await getShares(executor, [id]);
+  if (!share) {
+    throw new Error("Specified share doesn't exist");
+  }
+
+  await requireAccessToList(executor, share.listID, userID);
+  await executor(`delete from share where id = $1`, [id]);
+  return {
+    listIDs: [share.listID],
+    userIDs: [share.userID],
+  };
+}
+
+export async function searchShares(
+  executor: Executor,
+  {listIDs}: {listIDs: string[]},
+) {
+  if (listIDs.length === 0) return [];
+  const {rows} = await executor(
+    `select s.id, s.rowversion from share s, list l where s.listid = l.id and l.id in (${getPlaceholders(
+      listIDs.length,
+    )})`,
+    listIDs,
+  );
+  return rows as SearchResult[];
+}
+
+export async function getShares(executor: Executor, shareIDs: string[]) {
+  if (shareIDs.length === 0) return [];
+  const {rows} = await executor(
+    `select id, listid, userid from share where id in (${getPlaceholders(
+      shareIDs.length,
+    )})`,
+    shareIDs,
+  );
+  return rows.map(r => {
+    const share: Share = {
+      id: r.id,
+      listID: r.listid,
+      userID: r.userid,
+    };
+    return share;
+  });
+}
+
+export async function createTodo(
+  executor: Executor,
+  userID: string,
+  todo: Omit<Todo, 'sort'>,
+): Promise<Affected> {
+  await requireAccessToList(executor, todo.listID, userID);
+  const {rows} = await executor(
+    `select max(ord) as maxord from item where listid = $1`,
+    [todo.listID],
+  );
+  const maxOrd = rows[0]?.maxord ?? 0;
+  await executor(
+    `insert into item (id, listid, title, complete, ord, rowversion, lastmodified) values ($1, $2, $3, $4, $5, 1, now())`,
+    [todo.id, todo.listID, todo.text, todo.completed, maxOrd + 1],
+  );
+  return {
+    listIDs: [todo.listID],
+    userIDs: [],
+  };
+}
+
+export async function updateTodo(
+  executor: Executor,
+  userID: string,
+  update: TodoUpdate,
+): Promise<Affected> {
+  const todo = await mustGetTodo(executor, update.id);
+  await requireAccessToList(executor, todo.listID, userID);
+  await executor(
+    `update item set title = coalesce($1, title), complete = coalesce($2, complete), ord = coalesce($3, ord), rowversion = rowversion + 1, lastmodified = now() where id = $4`,
+    [update.text, update.completed, update.sort, update.id],
+  );
+  return {
+    listIDs: [todo.listID],
+    userIDs: [],
+  };
+}
+
+export async function deleteTodo(
+  executor: Executor,
+  userID: string,
+  todoID: string,
+): Promise<Affected> {
+  const todo = await mustGetTodo(executor, todoID);
+  await requireAccessToList(executor, todo.listID, userID);
+  await executor(`delete from item where id = $1`, [todoID]);
+  return {
+    listIDs: [todo.listID],
+    userIDs: [],
+  };
+}
 
 export async function searchTodos(
   executor: Executor,
-  spaceID: string,
-  opts: SearchTodosOptions,
-): Promise<Entry[]> {
-  const {returnValue, fromKey, whereComplete, inKeys} = opts;
-
-  const columns = ['key', 'version'];
-  if (returnValue) {
-    columns.push('value');
-  }
-
-  const params: unknown[] = [];
-  const filters = [`key like 'todo/%'`];
-
-  params.push(spaceID);
-  filters.push(`spaceid = $${params.length}`);
-
-  if (fromKey !== undefined) {
-    params.push(fromKey);
-    filters.push(`key >= $${params.length}`);
-  }
-
-  if (inKeys !== undefined) {
-    params.push(inKeys);
-    filters.push(`key = any($${params.length})`);
-  }
-
-  if (whereComplete !== undefined) {
-    params.push(whereComplete);
-    filters.push(`value->'completed' = $${params.length}`);
-  }
-
-  const sql = `select ${columns.join(', ')}
-    from replicache_entry
-    where ${filters.join(' and ')}
-    order by spaceid, key asc`;
-
-  const {rows} = await executor(sql, params);
-  return rows.map(row => ({
-    spaceID,
-    key: row.key,
-    value: returnValue ? row.value : undefined,
-    version: row.version,
-  }));
-}
-
-export type ClientViewRecord = {
-  id: string;
-  keys: Record<string, number>;
-};
-
-export function makeCVR(entries: Entry[], newID: () => string) {
-  const cvr: ClientViewRecord = {
-    id: newID(),
-    keys: {},
-  };
-  for (const e of entries) {
-    cvr.keys[e.key] = e.version;
-  }
-  return cvr;
-}
-
-export async function getClientView(
-  executor: Executor,
-  spaceID: string,
-  userID: string,
-  searchTodoOptions: SearchTodosOptions,
-): Promise<Entry[]> {
-  const [todos, extent] = await Promise.all([
-    searchTodos(executor, spaceID, searchTodoOptions),
-    getEntry(executor, spaceID, `extent/${userID}`),
-  ] as const);
-
-  if (!extent) {
-    return todos;
-  }
-
-  return [...todos, extent];
-}
-
-export async function getPatch(
-  executor: Executor,
-  spaceID: string,
-  userID: string,
-  searchTodoOptions: Omit<SearchTodosOptions, 'returnValue'>,
-  prevCVR: ClientViewRecord | undefined,
-  newID: () => string,
-): Promise<{patch: PatchOperation[]; cvr: ClientViewRecord}> {
-  if (prevCVR === undefined) {
-    return await getResetPatch(
-      executor,
-      spaceID,
-      userID,
-      searchTodoOptions,
-      newID,
-    );
-  }
-
-  const entries = await getClientView(
-    executor,
-    spaceID,
-    userID,
-    searchTodoOptions,
+  {listIDs}: {listIDs: string[]},
+) {
+  if (listIDs.length === 0) return [];
+  const {rows} = await executor(
+    `select id, rowversion from item where listid in (${getPlaceholders(
+      listIDs.length,
+    )})`,
+    listIDs,
   );
-  const nextCVR = makeCVR(entries, newID);
-
-  const putKeys = [];
-  for (const [key, version] of Object.entries(nextCVR.keys)) {
-    const prevVersion = prevCVR.keys[key];
-    if (prevVersion === undefined || prevVersion < version) {
-      putKeys.push(key);
-    }
-  }
-
-  const delKeys = [];
-  for (const key of Object.keys(prevCVR.keys)) {
-    if (nextCVR.keys[key] === undefined) {
-      delKeys.push(key);
-    }
-  }
-
-  if (putKeys.length + delKeys.length >= 1000) {
-    return await getResetPatch(
-      executor,
-      spaceID,
-      userID,
-      searchTodoOptions,
-      newID,
-    );
-  }
-
-  const fullEntries = await listEntries(executor, spaceID, '', putKeys);
-
-  const patch: PatchOperation[] = [];
-  for (const key of delKeys) {
-    patch.push({
-      op: 'del',
-      key,
-    });
-  }
-  for (const entry of fullEntries) {
-    patch.push({
-      op: 'put',
-      key: entry.key,
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      value: entry.value!,
-    });
-  }
-
-  return {patch, cvr: nextCVR};
+  return rows as SearchResult[];
 }
 
-async function getResetPatch(
-  executor: Executor,
-  spaceID: string,
-  userID: string,
-  searchTodoOptions: Omit<SearchTodosOptions, 'returnValue'>,
-  newID: () => string,
-): Promise<{patch: PatchOperation[]; cvr: ClientViewRecord}> {
-  const entries = await getClientView(executor, spaceID, userID, {
-    ...searchTodoOptions,
-    returnValue: true,
+export async function mustGetTodo(executor: Executor, id: string) {
+  const [todo] = await getTodos(executor, [id]);
+  if (!todo) {
+    throw new Error('Specified todo does not exist');
+  }
+  return todo;
+}
+
+export async function getTodos(executor: Executor, todoIDs: string[]) {
+  if (todoIDs.length === 0) return [];
+  const {rows} = await executor(
+    `select id, listid, title, complete, ord from item where id in (${getPlaceholders(
+      todoIDs.length,
+    )})`,
+    todoIDs,
+  );
+  return rows.map(r => {
+    const todo: Todo = {
+      id: r.id,
+      listID: r.listid,
+      text: r.title,
+      completed: r.complete,
+      sort: r.ord,
+    };
+    return todo;
   });
-
-  const cvr = makeCVR(entries, newID);
-  const patch: PatchOperation[] = [
-    {
-      op: 'clear',
-    },
-  ];
-
-  for (const entry of entries) {
-    patch.push({
-      op: 'put',
-      key: entry.key,
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      value: entry.value!,
-    });
-  }
-
-  return {
-    patch,
-    cvr,
-  };
 }
 
-export async function createSpace(
+export async function putClientGroup(
   executor: Executor,
-  spaceID: string,
-  populateSampleData = false,
-): Promise<void> {
-  console.log('creating space', spaceID);
+  clientGroup: ClientGroupRecord,
+) {
+  const {id, cvrVersion, clientVersion} = clientGroup;
   await executor(
-    `insert into replicache_space (id, lastmodified) values ($1, now())`,
-    [spaceID],
+    `insert into replicache_client_group
+      (id, cvrversion, clientversion, lastmodified)
+    values
+      ($1, $2, $3, now())
+    on conflict (id) do update set
+      cvrversion = $2, clientversion = $3, lastmodified = now()`,
+    [id, cvrVersion, clientVersion],
   );
-
-  if (populateSampleData) {
-    console.log('populating sample data...');
-    for (let i = 0; i < 1000; i++) {
-      const todo: Todo = {
-        id: nanoid(),
-        text: `Sample todo ${i}`,
-        completed: i > 10,
-        sort: i,
-      };
-      await putEntry(executor, spaceID, `todo/${todo.id}`, todo);
-    }
-  }
 }
 
-export async function hasSpace(
+export async function getClientGroupForUpdate(
   executor: Executor,
-  spaceID: string,
-): Promise<boolean> {
-  console.log('checking space existence', spaceID);
-  const res = await executor(
-    `select 1 from replicache_space where id = $1 limit 1`,
-    [spaceID],
+  clientGroupID: string,
+) {
+  const prevClientGroup = await getClientGroup(executor, clientGroupID, {
+    forUpdate: true,
+  });
+  return (
+    prevClientGroup ?? {
+      id: clientGroupID,
+      cvrVersion: 0,
+      clientVersion: 0,
+    }
   );
-  return res.rowCount === 1;
 }
 
-export async function getLastMutationID(
+export async function getClientGroup(
+  executor: Executor,
+  clientGroupID: string,
+  {forUpdate}: {forUpdate?: boolean} = {},
+) {
+  const {rows} = await executor(
+    `select cvrversion, clientversion from replicache_client_group where id = $1 ${
+      forUpdate ? 'for update' : ''
+    }`,
+    [clientGroupID],
+  );
+  if (!rows || rows.length === 0) return undefined;
+  const r = rows[0];
+  const res: ClientGroupRecord = {
+    id: clientGroupID,
+    cvrVersion: r.cvrversion,
+    clientVersion: r.clientversion,
+  };
+  return res;
+}
+
+export async function searchClients(
+  executor: Executor,
+  {
+    clientGroupID,
+    sinceClientVersion,
+  }: {clientGroupID: string; sinceClientVersion: number},
+) {
+  const {rows} = await executor(
+    `select id, lastmutationid, clientversion from replicache_client where clientGroupID = $1 and clientversion > $2`,
+    [clientGroupID, sinceClientVersion],
+  );
+  return rows.map(r => {
+    const client: ClientRecord = {
+      id: r.id,
+      clientGroupID,
+      lastMutationID: r.lastmutationid,
+      clientVersion: r.clientversion,
+    };
+    return client;
+  });
+}
+
+export async function getClientForUpdate(executor: Executor, clientID: string) {
+  const prevClient = await getClient(executor, clientID, {forUpdate: true});
+  return (
+    prevClient ?? {
+      id: clientID,
+      clientGroupID: '',
+      lastMutationID: 0,
+      clientVersion: 0,
+    }
+  );
+}
+
+export async function getClient(
   executor: Executor,
   clientID: string,
-): Promise<number | undefined> {
+  {forUpdate}: {forUpdate?: boolean} = {},
+) {
   const {rows} = await executor(
-    `select lastmutationid from replicache_client where id = $1`,
+    `select clientgroupid, lastmutationid, clientversion from replicache_client where id = $1 ${
+      forUpdate ? 'for update' : ''
+    }`,
     [clientID],
   );
-  const value = rows[0]?.lastmutationid;
-  if (value === undefined) {
-    return undefined;
-  }
-  return z.number().parse(value);
+  if (!rows || rows.length === 0) return undefined;
+  const r = rows[0];
+  const res: ClientRecord = {
+    id: r.id,
+    clientGroupID: r.clientgroupid,
+    lastMutationID: r.lastmutationid,
+    clientVersion: r.lastclientversion,
+  };
+  return res;
 }
 
-export async function setLastMutationID(
-  executor: Executor,
-  clientID: string,
-  lastMutationID: number,
-): Promise<void> {
+export async function putClient(executor: Executor, client: ClientRecord) {
+  const {id, clientGroupID, lastMutationID, clientVersion} = client;
   await executor(
     `
-    insert into replicache_client (id, lastmutationid, lastmodified)
-    values ($1, $2, now())
-      on conflict (id) do update set lastmutationid = $2, lastmodified = now()
-    `,
-    [clientID, lastMutationID],
+      insert into replicache_client
+        (id, clientgroupid, lastmutationid, clientversion, lastmodified)
+      values
+        ($1, $2, $3, $4, now())
+      on conflict (id) do update set
+        lastmutationid = $3, clientversion = $4, lastmodified = now()
+      `,
+    [id, clientGroupID, lastMutationID, clientVersion],
   );
+}
+
+export async function getAccessors(executor: Executor, listID: string) {
+  const {rows} = await executor(
+    `select ownerid as userid from list where id = $1 union ` +
+      `select userid from share where listid = $1`,
+    [listID],
+  );
+  return rows.map(r => r.userid) as string[];
+}
+
+async function requireAccessToList(
+  executor: Executor,
+  listID: string,
+  accessingUserID: string,
+) {
+  const {rows} = await executor(
+    `select 1 from list where id = $1 and (ownerid = $2 or id in (select listid from share where userid = $2))`,
+    [listID, accessingUserID],
+  );
+  if (rows.length === 0) {
+    throw new Error("Authorization error, can't access list");
+  }
+}
+
+function getPlaceholders(count: number) {
+  return Array.from({length: count}, (_, i) => `$${i + 1}`).join(', ');
 }

@@ -26,12 +26,19 @@
 // required to get up and running.
 
 import type {WriteTransaction} from 'replicache';
-import {Extent, getExtent} from './extent';
-import {Todo, listTodos, TodoUpdate} from './todo';
+import {Todo, listTodos, TodoUpdate} from 'shared';
+import {createList, deleteList} from 'shared';
+import {createShare, deleteShare} from 'shared';
 
 export type M = typeof mutators;
 
 export const mutators = {
+  createList,
+  deleteList,
+
+  createShare,
+  deleteShare,
+
   updateTodo: async (tx: WriteTransaction, update: TodoUpdate) => {
     // In a real app you may want to validate the incoming data is in fact a
     // TodoUpdate. Check out https://www.npmjs.com/package/@rocicorp/rails for
@@ -60,13 +67,5 @@ export const mutators = {
 
     const maxSort = todos.pop()?.sort ?? 0;
     await tx.put(`todo/${todo.id}`, {...todo, sort: maxSort + 1});
-  },
-
-  updateExtent: async (
-    tx: WriteTransaction,
-    {userID, extent}: {userID: string; extent: Partial<Extent>},
-  ) => {
-    const prev = await getExtent(tx, userID);
-    await tx.put(`extent/${userID}`, {...prev, ...extent});
   },
 };

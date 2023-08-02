@@ -5,11 +5,11 @@ export async function handlePoke(
   req: Express.Request,
   res: Express.Response,
 ): Promise<void> {
-  if (req.query.spaceID === undefined) {
-    res.status(400).send('Missing spaceID');
+  if (req.query.channel === undefined) {
+    res.status(400).send('Missing channel');
     return;
   }
-  const {spaceID} = req.query;
+  const {channel} = req.query;
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'text/event-stream;charset=utf-8');
@@ -21,8 +21,8 @@ export async function handlePoke(
 
   const pokeBackend = getPokeBackend();
 
-  const unlisten = pokeBackend.addListener(spaceID as string, () => {
-    console.log(`Sending poke for space ${spaceID}`);
+  const unlisten = pokeBackend.addListener(channel as string, () => {
+    console.log(`Sending poke for channel ${channel}`);
     res.write(`id: ${Date.now()}\n`);
     res.write(`data: poke\n\n`);
   });

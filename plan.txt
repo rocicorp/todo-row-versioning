@@ -1,0 +1,32 @@
+x Talk to Greg
+- Email Cloudflare
+===================
+x How come data isn’t disappearing with empty patch
+x investigate squelize
+x Specific poke channels (one per list, one per user)
+x Implement mutators for lists and todos
+x Implement reset pull
+==== breathe ====
+Implement row versioning
+x app data
+x client data
+x cookie
+==== breathe ====
+- Implement extents
+  x add user field to UI that stores in local storage
+  x send user in push/pull requests
+  x add owner field to list table
+  x plumb userID through to mutators and populate when create list
+  x add acl table
+  x add share ui to modify acl table
+  x change sync to obey acl table
+    x only return lists and associated that you are owner of
+    x also return lists that are shared with you
+  x validate mutations server-side by userID
+==== breathe ====
+x fix install conflict
+- share
+==== breathe ====
+- Finish docs
+==== breathe ====
+- ship

@@ -93,6 +93,7 @@ body,
   position: fixed;
   width: 300px;
   left: 50%;
+  top: 200px;
   margin-left: -180px;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.25);
   padding: 0 30px 30px 30px;

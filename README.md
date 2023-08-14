@@ -6,7 +6,7 @@ This is a demonstration of the [Row Version Strategy](https://doc.replicache.dev
 
 It implements the classic TodoMVC app, with one difference:
 
-<img src="screencap.png" width="400">
+<img src="share.png" width="400">
 
 It supports sharing. You can create multiple lists, and share different lists with different users.
 

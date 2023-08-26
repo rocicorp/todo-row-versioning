@@ -20,9 +20,10 @@ export async function createSchemaVersion1(executor: Executor) {
     "insert into replicache_meta (key, value) values ('schemaVersion', '1')",
   );
 
+  // cvrversion is null until first pull initializes it.
   await executor(`create table replicache_client_group (
     id varchar(36) primary key not null,
-    cvrversion integer not null,
+    cvrversion integer null,
     clientversion integer not null,
     lastmodified timestamp(6) not null
     )`);

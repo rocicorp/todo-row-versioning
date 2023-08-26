@@ -8,7 +8,7 @@ export type SearchResult = {
 
 export type ClientGroupRecord = {
   id: string;
-  cvrVersion: number;
+  cvrVersion: number | null;
   clientVersion: number;
 };
 
@@ -269,7 +269,7 @@ export async function getClientGroupForUpdate(
   return (
     prevClientGroup ?? {
       id: clientGroupID,
-      cvrVersion: 0,
+      cvrVersion: null,
       clientVersion: 0,
     }
   );

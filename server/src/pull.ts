@@ -15,9 +15,16 @@ import {
 } from './data';
 import {ClientViewData} from './cvr';
 
+const cookie = z.object({
+  order: z.number(),
+  clientGroupID: z.string(),
+});
+
+type Cookie = z.infer<typeof cookie>;
+
 const pullRequest = z.object({
   clientGroupID: z.string(),
-  cookie: z.any(),
+  cookie: z.union([cookie, z.null()]),
 });
 
 type ClientViewRecord = {
@@ -39,7 +46,9 @@ export async function pull(
   const pull = pullRequest.parse(requestBody);
 
   const {clientGroupID} = pull;
-  const prevCVR = cvrCache.get(makeCVRKey(clientGroupID, pull.cookie));
+  const prevCVR = pull.cookie
+    ? cvrCache.get(makeCVRKey(pull.cookie))
+    : undefined;
   const baseCVR = prevCVR ?? {
     list: new ClientViewData(),
     todo: new ClientViewData(),
@@ -82,9 +91,25 @@ export async function pull(
       const sharePuts = nextCVR.share.getPutsSince(baseCVR.share);
       const todoPuts = nextCVR.todo.getPutsSince(baseCVR.todo);
 
+      // Replicache ClientGroups can be forked from an existing
+      // ClientGroup with existing state and cookie. In this case we
+      // might see a new CG getting a pull with a non-null cookie.
+      // For these CG's, initialize to incoming cookie.
+      let prevCVRVersion = baseClientGroupRecord.cvrVersion;
+      if (prevCVRVersion === null) {
+        if (pull.cookie !== null) {
+          prevCVRVersion = pull.cookie.order;
+        } else {
+          prevCVRVersion = 0;
+        }
+        console.log(
+          `ClientGroup ${clientGroupID} is new, initializing to ${prevCVRVersion}`,
+        );
+      }
+
       const nextClientGroupRecord = {
         ...baseClientGroupRecord,
-        cvrVersion: baseClientGroupRecord.cvrVersion + 1,
+        cvrVersion: prevCVRVersion + 1,
       };
 
       console.log({listPuts, sharePuts, todoPuts, nextClientGroupRecord});
@@ -139,7 +164,10 @@ export async function pull(
     patch.push({op: 'put', key: `todo/${todo.id}`, value: todo});
   }
 
-  const respCookie = nextCVRVersion;
+  const respCookie: Cookie = {
+    clientGroupID,
+    order: nextCVRVersion,
+  };
   const resp: PullResponseOKV1 = {
     cookie: respCookie,
     lastMutationIDChanges: Object.fromEntries(
@@ -148,11 +176,11 @@ export async function pull(
     patch,
   };
 
-  cvrCache.set(makeCVRKey(clientGroupID, respCookie), nextCVR);
+  cvrCache.set(makeCVRKey(respCookie), nextCVR);
 
   return resp;
 }
 
-function makeCVRKey(clientGroupID: string, version: number) {
-  return `${clientGroupID}/${version}`;
+function makeCVRKey({order, clientGroupID}: Cookie) {
+  return `${clientGroupID}/${order}`;
 }

@@ -14,7 +14,7 @@ Try it out at: https://todo-row-versioning.onrender.com/.
 
 The sharing is completely dynamic: when somebody shares something with you, it syncs to you automatically. When they unshare it, it disappears.
 
-What's mroe the sharing is "real". You only sync the data you actually have access to. The subset of data you sync changes dynamically based on what is shared with you.
+What's more the sharing is "real". You only sync the data you actually have access to. The subset of data you sync changes dynamically based on what is shared with you.
 
 This is a simple demonstration of a more general concept: With Row Versioning the data that is synced can be any arbitrary query of the database. The data that is synced is call the sync _extent_. Each user, or even each device can have its own extent, and it can change at any time.
 

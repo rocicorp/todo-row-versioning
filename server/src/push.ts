@@ -91,10 +91,13 @@ async function processMutation(
       JSON.stringify(mutation, null, ''),
     );
 
-    const [baseClientGroup, baseClient] = await Promise.all([
-      await getClientGroupForUpdate(executor, clientGroupID),
-      await getClientForUpdate(executor, mutation.clientID),
-    ]);
+    // Get a write lock on the client group first to serialize with other
+    // requests from the CG and avoid deadlocks.
+    const baseClientGroup = await getClientGroupForUpdate(
+      executor,
+      clientGroupID,
+    );
+    const baseClient = await getClientForUpdate(executor, mutation.clientID);
 
     console.log({baseClientGroup, baseClient});
 

@@ -32,9 +32,8 @@ async function initPool() {
   pool.on('connect', async client => {
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     await client.query(
-      'SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE',
+      'SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ',
     );
-    await client.query('SET enable_seqscan=off');
   });
 
   await withExecutorAndPool(async executor => {

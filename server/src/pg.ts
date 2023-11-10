@@ -63,6 +63,7 @@ async function withExecutorAndPool<R>(
       console.log('Running query', sql, params);
       return await client.query(sql, params);
     } catch (e) {
+      console.error('original error from pg', e);
       throw new Error(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         `Error executing SQL: ${sql}: ${(e as unknown as any).toString()}`,

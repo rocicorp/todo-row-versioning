@@ -59,8 +59,6 @@ export async function pull(
 
   const {nextCVRVersion, nextCVR, clientChanges, lists, shares, todos} =
     await transact(async executor => {
-      // Get a write lock on the client group first to serialize with other
-      // requests from the CG and avoid deadlocks.
       const baseClientGroupRecord = await getClientGroupForUpdate(
         executor,
         clientGroupID,

@@ -31,9 +31,10 @@ async function initPool() {
   });
   pool.on('connect', async client => {
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    client.query(
+    await client.query(
       'SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE',
     );
+    await client.query('SET enable_seqscan=off');
   });
 
   await withExecutorAndPool(async executor => {

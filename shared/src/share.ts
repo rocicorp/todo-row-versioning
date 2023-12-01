@@ -1,7 +1,8 @@
 import {z} from 'zod';
-import {entitySchema, generate} from '@rocicorp/rails';
+import {generate} from '@rocicorp/rails';
 
-export const shareSchema = entitySchema.extend({
+export const shareSchema = z.object({
+  id: z.string(),
   listID: z.string(),
   userID: z.string(),
 });
@@ -12,4 +13,4 @@ export const {
   init: createShare,
   list: listShares,
   delete: deleteShare,
-} = generate('share', shareSchema);
+} = generate('share', shareSchema.parse);

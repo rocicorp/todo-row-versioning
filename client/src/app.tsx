@@ -51,23 +51,20 @@ const App = ({
     return () => ev.close();
   }, [userID]);
 
-  const lists = useSubscribe(rep, listLists, [], [rep]);
+  const lists = useSubscribe(rep, listLists, {default: []});
   lists.sort((a, b) => a.name.localeCompare(b.name));
 
   const selectedList = useSubscribe(
     rep,
     (tx: ReadTransaction) => getList(tx, listID),
-    undefined,
-    [rep, listID],
+    {dependencies: [listID]},
   );
 
   // Subscribe to all todos and sort them.
-  const todos = useSubscribe(
-    rep,
-    async tx => todosByList(tx, listID),
-    [],
-    [rep, listID],
-  );
+  const todos = useSubscribe(rep, async tx => todosByList(tx, listID), {
+    default: [],
+    dependencies: [listID],
+  });
   todos.sort((a, b) => a.sort - b.sort);
 
   // Define event handlers and connect them to Replicache mutators. Each

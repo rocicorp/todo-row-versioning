@@ -17,7 +17,6 @@ import {
 } from './data';
 import type {ReadonlyJSONValue} from 'replicache';
 import {listSchema, shareSchema, todoSchema} from 'shared';
-import {entitySchema} from '@rocicorp/rails';
 
 const mutationSchema = z.object({
   id: z.number(),
@@ -188,7 +187,10 @@ async function mutate(
       return await updateTodo(
         executor,
         userID,
-        todoSchema.partial().merge(entitySchema).parse(mutation.args),
+        todoSchema
+          .partial()
+          .merge(todoSchema.pick({id: true}))
+          .parse(mutation.args),
       );
     case 'deleteTodo':
       return await deleteTodo(

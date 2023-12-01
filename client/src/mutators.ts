@@ -43,9 +43,9 @@ export const mutators = {
     // In a real app you may want to validate the incoming data is in fact a
     // TodoUpdate. Check out https://www.npmjs.com/package/@rocicorp/rails for
     // some heper functions to do this.
-    const prev = (await tx.get(`todo/${update.id}`)) as Todo;
+    const prev = await tx.get<Todo>(`todo/${update.id}`);
     const next = {...prev, ...update};
-    await tx.put(`todo/${next.id}`, next);
+    await tx.set(`todo/${next.id}`, next);
   },
 
   deleteTodo: async (tx: WriteTransaction, id: string) => {
@@ -66,6 +66,6 @@ export const mutators = {
     todos.sort((t1, t2) => t1.sort - t2.sort);
 
     const maxSort = todos.pop()?.sort ?? 0;
-    await tx.put(`todo/${todo.id}`, {...todo, sort: maxSort + 1});
+    await tx.set(`todo/${todo.id}`, {...todo, sort: maxSort + 1});
   },
 };

@@ -3,10 +3,11 @@
 // domain object in your application.
 
 import {z} from 'zod';
-import {entitySchema, generate, Update} from '@rocicorp/rails';
+import {generate, Update} from '@rocicorp/rails';
 import type {ReadTransaction} from 'replicache';
 
-export const todoSchema = entitySchema.extend({
+export const todoSchema = z.object({
+  id: z.string(),
   listID: z.string(),
   text: z.string(),
   completed: z.boolean(),
@@ -22,7 +23,7 @@ export const {
   update: updateTodo,
   delete: deleteTodo,
   list: listTodos,
-} = generate('todo', todoSchema);
+} = generate('todo', todoSchema.parse);
 
 export async function todosByList(tx: ReadTransaction, listID: string) {
   // TODO: would be better to use an index, but rails doesn't support yet.

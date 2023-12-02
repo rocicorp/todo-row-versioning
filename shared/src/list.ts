@@ -1,7 +1,8 @@
 import {z} from 'zod';
-import {entitySchema, generate, Update} from '@rocicorp/rails';
+import {generate, Update} from '@rocicorp/rails';
 
-export const listSchema = entitySchema.extend({
+export const listSchema = z.object({
+  id: z.string(),
   name: z.string(),
   ownerID: z.string(),
 });
@@ -14,4 +15,4 @@ export const {
   list: listLists,
   get: getList,
   delete: deleteList,
-} = generate('list', listSchema);
+} = generate('list', listSchema.parse);

@@ -17,7 +17,6 @@ import {
 } from './data';
 import type {ReadonlyJSONValue} from 'replicache';
 import {listSchema, shareSchema, todoSchema} from 'shared';
-import {entitySchema} from '@rocicorp/rails';
 
 const mutationSchema = z.object({
   id: z.number(),
@@ -91,8 +90,6 @@ async function processMutation(
       JSON.stringify(mutation, null, ''),
     );
 
-    // Get a write lock on the client group first to serialize with other
-    // requests from the CG and avoid deadlocks.
     const baseClientGroup = await getClientGroupForUpdate(
       executor,
       clientGroupID,
@@ -190,7 +187,10 @@ async function mutate(
       return await updateTodo(
         executor,
         userID,
-        todoSchema.partial().merge(entitySchema).parse(mutation.args),
+        todoSchema
+          .partial()
+          .merge(todoSchema.pick({id: true}))
+          .parse(mutation.args),
       );
     case 'deleteTodo':
       return await deleteTodo(

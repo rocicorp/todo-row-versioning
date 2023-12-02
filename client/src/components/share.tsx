@@ -13,8 +13,7 @@ export function Share({rep, listID}: {rep: Replicache<M>; listID: string}) {
       const allShares = await listShares(tx);
       return allShares.filter(a => a.listID === listID);
     },
-    [],
-    [rep],
+    {default: []},
   );
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {

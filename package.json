@@ -30,6 +30,6 @@
   ],
   "dependencies": {
     "@rocicorp/rails": "0.8.1",
-    "replicache": "^14.0.3"
+    "replicache": "^14.1.0"
   }
 }

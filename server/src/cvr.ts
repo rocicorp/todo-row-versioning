@@ -19,7 +19,7 @@ export class ClientViewData {
     const puts: string[] = [];
     for (const [id, rowversion] of this._data) {
       const prev = cvr._data.get(id);
-      if (prev === undefined || prev < rowversion) {
+      if (prev === undefined || prev !== rowversion) {
         puts.push(id);
       }
     }

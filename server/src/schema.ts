@@ -1,9 +1,8 @@
-import type {PGConfig} from './pgconfig/pgconfig.js';
 import type {Executor} from './pg.js';
 
-export async function createDatabase(executor: Executor, dbConfig: PGConfig) {
+export async function createDatabase(executor: Executor) {
   console.log('creating database');
-  const schemaVersion = await dbConfig.getSchemaVersion(executor);
+  const schemaVersion = await getSchemaVersion(executor);
   if (schemaVersion < 0 || schemaVersion > 1) {
     throw new Error('Unexpected schema version: ' + schemaVersion);
   }
@@ -40,17 +39,15 @@ export async function createSchemaVersion1(executor: Executor) {
     id varchar(36) primary key not null,
     ownerid varchar(36) not null,
     name text not null,
-    rowversion integer not null,
     lastmodified timestamp(6) not null
     )`);
 
   await executor(`create table share (
-      id varchar(36) primary key not null,
-      listid varchar(36) not null,
-      userid varchar(36) not null,
-      rowversion integer not null,
-      lastmodified timestamp(6) not null
-      )`);
+    id varchar(36) primary key not null,
+    listid varchar(36) not null,
+    userid varchar(36) not null,
+    lastmodified timestamp(6) not null
+    )`);
 
   await executor(`create table item (
     id varchar(36) primary key not null,
@@ -58,7 +55,18 @@ export async function createSchemaVersion1(executor: Executor) {
     title text not null,
     complete boolean not null,
     ord integer not null,
-    rowversion integer not null,
     lastmodified timestamp(6) not null
     )`);
+}
+
+async function getSchemaVersion(executor: Executor): Promise<number> {
+  const metaExists = await executor(`select exists(
+      select from pg_tables where schemaname = 'public' and tablename = 'replicache_meta')`);
+  if (!metaExists.rows[0].exists) {
+    return 0;
+  }
+  const qr = await executor(
+    `select value from replicache_meta where key = 'schemaVersion'`,
+  );
+  return qr.rows[0].value;
 }

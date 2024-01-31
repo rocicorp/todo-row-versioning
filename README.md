@@ -23,9 +23,10 @@ The server will correctly send to the requesting client the difference from its 
 ## Notes
 
 - In this demo, the _Client View Records_ -- the caches of responses previously sent to clients -- are stored in server process memory. This works fine for a single-node server like this demo, but for a distributed server (or serverless) you'll need to store these in something like Redis. It's OK if they time out, the worst that will happen is the client will do a full sync.
+- Because this demo is based on Postgres, we don't need to explicitly store a rowversion column. Postgres already tracks a suitable column internally, [`xmin`](https://www.postgresql.org/docs/current/ddl-system-columns.html).
 - The extent is stored in this demo per-user (across the user's tabs). This is accomplished by storing the extent in a Replicache entry that is also synced. The extent is changed with a mutator, just like any other Replicache data.
 
-## 1. Setup
+## Setup
 
 #### Get your Replicache License Key
 
@@ -39,21 +40,25 @@ $ npx replicache get-license
 $ export VITE_REPLICACHE_LICENSE_KEY="<your license key>"
 ```
 
+#### Install Postgres locally and create a new empty database.
+
+On MacOS, I recommend [Postgres.app](https://postgresapp.com/). But any Postgres works fine.
+
 #### Install and Build
 
 ```bash
 $ npm install; npm run build;
 ```
 
-## 2. Start frontend and backend watcher
+## Develop
+
+Provide the URL to the database you created in the `DATABASE_URL` environment variables:
 
 ```bash
-$ npm run watch --ws
+$ DATABASE_URL='postgresql://localhost/todo-row-versioning' npm run watch --ws
 ```
 
-Provides an example integrating replicache with react in a simple todo application.
-
-## Deploying to Render
+## Deploy to Render
 
 A render blueprint example is provided to deploy the application.
 

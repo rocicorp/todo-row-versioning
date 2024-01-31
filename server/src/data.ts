@@ -33,7 +33,7 @@ export async function createList(
     throw new Error('Authorization error, cannot create list for other user');
   }
   await executor(
-    `insert into list (id, ownerid, name, rowversion, lastmodified) values ($1, $2, $3, 1, now())`,
+    `insert into list (id, ownerid, name, lastmodified) values ($1, $2, $3, now())`,
     [list.id, list.ownerID, list.name],
   );
   return {listIDs: [], userIDs: [list.ownerID]};
@@ -58,10 +58,11 @@ export async function searchLists(
   {accessibleByUserID}: {accessibleByUserID: string},
 ) {
   const {rows} = await executor(
-    `select id, rowversion from list where ownerid = $1 or ` +
+    `select id, xmin as rowversion from list where ownerid = $1 or ` +
       `id in (select listid from share where userid = $1)`,
     [accessibleByUserID],
   );
+  console.log({lists: rows});
   return rows as SearchResult[];
 }
 
@@ -90,7 +91,7 @@ export async function createShare(
 ): Promise<Affected> {
   await requireAccessToList(executor, share.listID, userID);
   await executor(
-    `insert into share (id, listid, userid, rowversion, lastmodified) values ($1, $2, $3, 1, now())`,
+    `insert into share (id, listid, userid, lastmodified) values ($1, $2, $3, now())`,
     [share.id, share.listID, share.userID],
   );
   return {
@@ -123,11 +124,12 @@ export async function searchShares(
 ) {
   if (listIDs.length === 0) return [];
   const {rows} = await executor(
-    `select s.id, s.rowversion from share s, list l where s.listid = l.id and l.id in (${getPlaceholders(
+    `select s.id, s.xmin as rowversion from share s, list l where s.listid = l.id and l.id in (${getPlaceholders(
       listIDs.length,
     )})`,
     listIDs,
   );
+  console.log({shares: rows});
   return rows as SearchResult[];
 }
 
@@ -161,7 +163,7 @@ export async function createTodo(
   );
   const maxOrd = rows[0]?.maxord ?? 0;
   await executor(
-    `insert into item (id, listid, title, complete, ord, rowversion, lastmodified) values ($1, $2, $3, $4, $5, 1, now())`,
+    `insert into item (id, listid, title, complete, ord, lastmodified) values ($1, $2, $3, $4, $5, now())`,
     [todo.id, todo.listID, todo.text, todo.completed, maxOrd + 1],
   );
   return {
@@ -178,7 +180,7 @@ export async function updateTodo(
   const todo = await mustGetTodo(executor, update.id);
   await requireAccessToList(executor, todo.listID, userID);
   await executor(
-    `update item set title = coalesce($1, title), complete = coalesce($2, complete), ord = coalesce($3, ord), rowversion = rowversion + 1, lastmodified = now() where id = $4`,
+    `update item set title = coalesce($1, title), complete = coalesce($2, complete), ord = coalesce($3, ord), lastmodified = now() where id = $4`,
     [update.text, update.completed, update.sort, update.id],
   );
   return {
@@ -207,11 +209,12 @@ export async function searchTodos(
 ) {
   if (listIDs.length === 0) return [];
   const {rows} = await executor(
-    `select id, rowversion from item where listid in (${getPlaceholders(
+    `select id, xmin as rowversion from item where listid in (${getPlaceholders(
       listIDs.length,
     )})`,
     listIDs,
   );
+  console.log({todos: rows});
   return rows as SearchResult[];
 }
 

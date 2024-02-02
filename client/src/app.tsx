@@ -1,15 +1,15 @@
+import {Dialog} from '@headlessui/react';
 import {nanoid} from 'nanoid';
-import React, {useEffect, useState} from 'react';
+import Navigo from 'navigo';
+import {useEffect, useState} from 'react';
 import {ReadTransaction, Replicache} from 'replicache';
 import {useSubscribe} from 'replicache-react';
 import {TodoUpdate, todosByList} from 'shared';
-import {M} from './mutators';
+import {getList, listLists} from 'shared/src/list';
 import Header from './components/header';
 import MainSection from './components/main-section';
-import {getList, listLists} from 'shared/src/list';
-import Navigo from 'navigo';
 import {Share} from './components/share';
-import {Dialog} from '@headlessui/react';
+import {M} from './mutators';
 
 // This is the top-level component for our app.
 const App = ({
@@ -37,19 +37,10 @@ const App = ({
     router.resolve();
   }, []);
 
-  useEffect(() => {
-    // Listen for pokes related to just this list.
-    const ev = new EventSource(`/api/replicache/poke?channel=list/${listID}`);
-    ev.onmessage = async () => rep.pull();
-    return () => ev.close();
-  }, [listID]);
-
-  useEffect(() => {
-    // Listen for pokes related to the docs this user has access to.
-    const ev = new EventSource(`/api/replicache/poke?channel=user/${userID}`);
-    ev.onmessage = async () => rep.pull();
-    return () => ev.close();
-  }, [userID]);
+  // Listen for pokes related to just this list.
+  useEventSourcePoke(`/api/replicache/poke?channel=list/${listID}`, rep);
+  // Listen for pokes related to the docs this user has access to.
+  useEventSourcePoke(`/api/replicache/poke?channel=user/${userID}`, rep);
 
   const lists = useSubscribe(rep, listLists, {default: []});
   lists.sort((a, b) => a.name.localeCompare(b.name));
@@ -161,5 +152,13 @@ const App = ({
     </div>
   );
 };
+
+function useEventSourcePoke(url: string, rep: Replicache<M>) {
+  useEffect(() => {
+    const ev = new EventSource(url);
+    ev.onmessage = () => rep.pull().catch(e => console.error('Pull failed', e));
+    return () => ev.close();
+  }, [url]);
+}
 
 export default App;

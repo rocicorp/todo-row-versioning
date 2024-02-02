@@ -1,11 +1,11 @@
+import {nanoid} from 'nanoid';
 import React, {useCallback, useEffect, useState} from 'react';
 import ReactDOM from 'react-dom/client';
-import './index.css';
-import App from './app';
-import {mutators} from './mutators';
 import {Replicache} from 'replicache';
 import {useDebouncedCallback} from 'use-debounce';
-import {nanoid} from 'nanoid';
+import App from './app';
+import './index.css';
+import {mutators} from './mutators';
 
 async function init() {
   // See https://doc.replicache.dev/licensing for how to get a license key.
@@ -41,7 +41,7 @@ async function init() {
 
     const updateReplicache = useDebouncedCallback(() => {
       console.log('updating replicache');
-      r.pull();
+      r.pull().catch(e => console.error('Pull failed', e));
     }, 200);
     useEffect(() => {
       r.pushURL = `/api/replicache/push?userID=${userID}`;

@@ -46,7 +46,7 @@ async function init() {
     useEffect(() => {
       r.pushURL = `/api/replicache/push?userID=${userID}`;
       r.pullURL = `/api/replicache/pull?userID=${userID}`;
-      updateReplicache();
+      void updateReplicache();
     }, [userID]);
 
     const handleUserIDChange = (userID: string) => {

@@ -3,7 +3,7 @@ import type {PatchOperation, PullResponse, PullResponseOKV1} from 'replicache';
 import type Express from 'express';
 import {transact} from './pg';
 import {
-  getClientGroupForUpdate,
+  getClientGroup,
   getLists,
   getShares,
   getTodos,
@@ -59,7 +59,7 @@ export async function pull(
 
   const {nextCVRVersion, nextCVR, clientChanges, lists, shares, todos} =
     await transact(async executor => {
-      const baseClientGroupRecord = await getClientGroupForUpdate(
+      const baseClientGroupRecord = await getClientGroup(
         executor,
         clientGroupID,
       );

@@ -8,12 +8,12 @@ import {
   deleteList,
   deleteTodo,
   deleteShare,
-  getClientForUpdate,
-  getClientGroupForUpdate,
   putClient,
   putClientGroup,
   updateTodo,
   Affected,
+  getClientGroup,
+  getClient,
 } from './data';
 import type {ReadonlyJSONValue} from 'replicache';
 import {listSchema, shareSchema, todoSchema} from 'shared';
@@ -90,11 +90,8 @@ async function processMutation(
       JSON.stringify(mutation, null, ''),
     );
 
-    const baseClientGroup = await getClientGroupForUpdate(
-      executor,
-      clientGroupID,
-    );
-    const baseClient = await getClientForUpdate(executor, mutation.clientID);
+    const baseClientGroup = await getClientGroup(executor, clientGroupID);
+    const baseClient = await getClient(executor, mutation.clientID);
 
     console.log({baseClientGroup, baseClient});
 

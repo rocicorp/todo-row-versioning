@@ -259,41 +259,27 @@ export async function putClientGroup(
   );
 }
 
-export async function getClientGroupForUpdate(
-  executor: Executor,
-  clientGroupID: string,
-) {
-  const prevClientGroup = await getClientGroup(executor, clientGroupID, {
-    forUpdate: true,
-  });
-  return (
-    prevClientGroup ?? {
-      id: clientGroupID,
-      cvrVersion: null,
-      clientVersion: 0,
-    }
-  );
-}
-
 export async function getClientGroup(
   executor: Executor,
   clientGroupID: string,
-  {forUpdate}: {forUpdate?: boolean} = {},
-) {
+): Promise<ClientGroupRecord> {
   const {rows} = await executor(
-    `select cvrversion, clientversion from replicache_client_group where id = $1 ${
-      forUpdate ? 'for update' : ''
-    }`,
+    `select cvrversion, clientversion from replicache_client_group where id = $1`,
     [clientGroupID],
   );
-  if (!rows || rows.length === 0) return undefined;
+  if (!rows || rows.length === 0) {
+    return {
+      id: clientGroupID,
+      cvrVersion: null,
+      clientVersion: 0,
+    };
+  }
   const r = rows[0];
-  const res: ClientGroupRecord = {
+  return {
     id: clientGroupID,
     cvrVersion: r.cvrversion,
     clientVersion: r.clientversion,
   };
-  return res;
 }
 
 export async function searchClients(
@@ -318,38 +304,28 @@ export async function searchClients(
   });
 }
 
-export async function getClientForUpdate(executor: Executor, clientID: string) {
-  const prevClient = await getClient(executor, clientID, {forUpdate: true});
-  return (
-    prevClient ?? {
+export async function getClient(
+  executor: Executor,
+  clientID: string,
+): Promise<ClientRecord> {
+  const {rows} = await executor(
+    `select clientgroupid, lastmutationid, clientversion from replicache_client where id = $1`,
+    [clientID],
+  );
+  if (!rows || rows.length === 0)
+    return {
       id: clientID,
       clientGroupID: '',
       lastMutationID: 0,
       clientVersion: 0,
-    }
-  );
-}
-
-export async function getClient(
-  executor: Executor,
-  clientID: string,
-  {forUpdate}: {forUpdate?: boolean} = {},
-) {
-  const {rows} = await executor(
-    `select clientgroupid, lastmutationid, clientversion from replicache_client where id = $1 ${
-      forUpdate ? 'for update' : ''
-    }`,
-    [clientID],
-  );
-  if (!rows || rows.length === 0) return undefined;
+    };
   const r = rows[0];
-  const res: ClientRecord = {
+  return {
     id: r.id,
     clientGroupID: r.clientgroupid,
     lastMutationID: r.lastmutationid,
     clientVersion: r.lastclientversion,
   };
-  return res;
 }
 
 export async function putClient(executor: Executor, client: ClientRecord) {

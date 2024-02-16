@@ -63,8 +63,6 @@ export async function push(userID: string, requestBody: ReadonlyJSONValue) {
     }
   }
 
-  console.log({affected});
-
   const pokeBackend = getPokeBackend();
   for (const listID of affected.listIDs) {
     pokeBackend.poke(`list/${listID}`);
@@ -92,8 +90,6 @@ async function processMutation(
 
     const baseClientGroup = await getClientGroup(executor, clientGroupID);
     const baseClient = await getClient(executor, mutation.clientID);
-
-    console.log({baseClientGroup, baseClient});
 
     const nextClientVersion = baseClientGroup.clientVersion + 1;
     const nextMutationID = baseClient.lastMutationID + 1;

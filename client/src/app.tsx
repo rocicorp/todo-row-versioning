@@ -156,9 +156,11 @@ const App = ({
 function useEventSourcePoke(url: string, rep: Replicache<M>) {
   useEffect(() => {
     const ev = new EventSource(url);
-    ev.onmessage = () => rep.pull().catch(e => console.error('Pull failed', e));
+    ev.onmessage = () => {
+      void rep.pull();
+    };
     return () => ev.close();
-  }, [url]);
+  }, [url, rep]);
 }
 
 export default App;

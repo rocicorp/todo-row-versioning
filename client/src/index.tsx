@@ -2,10 +2,9 @@ import {nanoid} from 'nanoid';
 import React, {useCallback, useEffect, useState} from 'react';
 import ReactDOM from 'react-dom/client';
 import {Replicache} from 'replicache';
-import {useDebouncedCallback} from 'use-debounce';
 import App from './app';
 import './index.css';
-import {mutators} from './mutators';
+import {M, mutators} from './mutators';
 
 async function init() {
   // See https://doc.replicache.dev/licensing for how to get a license key.
@@ -14,15 +13,29 @@ async function init() {
     throw new Error('Missing VITE_REPLICACHE_LICENSE_KEY');
   }
 
-  const r = new Replicache({
-    name: 'anon',
-    licenseKey,
-    mutators,
-    logLevel: 'debug',
-  });
-
   function Root() {
     const [userID, setUserID] = useState('');
+    const [r, setR] = useState<Replicache<M> | null>(null);
+
+    useEffect(() => {
+      if (!userID) {
+        return;
+      }
+      console.log('updating replicache');
+      const r = new Replicache({
+        name: userID,
+        licenseKey,
+        mutators,
+        pushURL: `/api/replicache/push?userID=${userID}`,
+        pullURL: `/api/replicache/pull?userID=${userID}`,
+        logLevel: 'debug',
+      });
+      setR(r);
+      return () => {
+        void r.close();
+      };
+    }, [userID]);
+
     const storageListener = useCallback(() => {
       let userID = localStorage.getItem('userID');
       if (!userID) {
@@ -39,27 +52,19 @@ async function init() {
       };
     }, []);
 
-    const updateReplicache = useDebouncedCallback(() => {
-      console.log('updating replicache');
-      r.pull().catch(e => console.error('Pull failed', e));
-    }, 200);
-    useEffect(() => {
-      r.pushURL = `/api/replicache/push?userID=${userID}`;
-      r.pullURL = `/api/replicache/pull?userID=${userID}`;
-      updateReplicache();
-    }, [userID]);
-
     const handleUserIDChange = (userID: string) => {
       localStorage.setItem('userID', userID);
       storageListener();
     };
 
     return (
-      <App
-        rep={r}
-        userID={userID}
-        onUserIDChange={userID => handleUserIDChange(userID)}
-      />
+      r && (
+        <App
+          rep={r}
+          userID={userID}
+          onUserIDChange={userID => handleUserIDChange(userID)}
+        />
+      )
     );
   }
 

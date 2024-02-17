@@ -14,6 +14,7 @@ import {
   Affected,
   getClientGroup,
   getClient,
+  ClientGroupRecord,
 } from './data';
 import type {ReadonlyJSONValue} from 'replicache';
 import {listSchema, shareSchema, todoSchema} from 'shared';
@@ -88,8 +89,16 @@ async function processMutation(
       JSON.stringify(mutation, null, ''),
     );
 
-    const baseClientGroup = await getClientGroup(executor, clientGroupID);
-    const baseClient = await getClient(executor, mutation.clientID);
+    const baseClientGroup = await getClientGroup(
+      executor,
+      clientGroupID,
+      userID,
+    );
+    const baseClient = await getClient(
+      executor,
+      mutation.clientID,
+      clientGroupID,
+    );
 
     const nextClientVersion = baseClientGroup.clientVersion + 1;
     const nextMutationID = baseClient.lastMutationID + 1;
@@ -117,9 +126,8 @@ async function processMutation(
       }
     }
 
-    const nextClientGroup = {
-      id: clientGroupID,
-      cvrVersion: baseClientGroup.cvrVersion,
+    const nextClientGroup: ClientGroupRecord = {
+      ...baseClientGroup,
       clientVersion: nextClientVersion,
     };
 

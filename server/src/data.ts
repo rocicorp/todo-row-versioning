@@ -8,6 +8,7 @@ export type SearchResult = {
 
 export type ClientGroupRecord = {
   id: string;
+  userID: string;
   cvrVersion: number | null;
   clientVersion: number;
 };
@@ -247,36 +248,42 @@ export async function putClientGroup(
   executor: Executor,
   clientGroup: ClientGroupRecord,
 ) {
-  const {id, cvrVersion, clientVersion} = clientGroup;
+  const {id, userID, cvrVersion, clientVersion} = clientGroup;
   await executor(
     `insert into replicache_client_group
-      (id, cvrversion, clientversion, lastmodified)
+      (id, userid, cvrversion, clientversion, lastmodified)
     values
-      ($1, $2, $3, now())
+      ($1, $2, $3, $4, now())
     on conflict (id) do update set
-      cvrversion = $2, clientversion = $3, lastmodified = now()`,
-    [id, cvrVersion, clientVersion],
+      userid = $2, cvrversion = $3, clientversion = $4, lastmodified = now()`,
+    [id, userID, cvrVersion, clientVersion],
   );
 }
 
 export async function getClientGroup(
   executor: Executor,
   clientGroupID: string,
+  userID: string,
 ): Promise<ClientGroupRecord> {
   const {rows} = await executor(
-    `select cvrversion, clientversion from replicache_client_group where id = $1`,
+    `select userid, cvrversion, clientversion from replicache_client_group where id = $1`,
     [clientGroupID],
   );
   if (!rows || rows.length === 0) {
     return {
       id: clientGroupID,
+      userID,
       cvrVersion: null,
       clientVersion: 0,
     };
   }
   const r = rows[0];
+  if (r.userid !== userID) {
+    throw new Error('Authorization error - user does not own client group');
+  }
   return {
     id: clientGroupID,
+    userID: r.userid,
     cvrVersion: r.cvrversion,
     clientVersion: r.clientversion,
   };
@@ -307,6 +314,7 @@ export async function searchClients(
 export async function getClient(
   executor: Executor,
   clientID: string,
+  clientGroupID: string,
 ): Promise<ClientRecord> {
   const {rows} = await executor(
     `select clientgroupid, lastmutationid, clientversion from replicache_client where id = $1`,
@@ -320,6 +328,11 @@ export async function getClient(
       clientVersion: 0,
     };
   const r = rows[0];
+  if (r.clientgroupid !== clientGroupID) {
+    throw new Error(
+      'Authorization error - client does not belong to client group',
+    );
+  }
   return {
     id: r.id,
     clientGroupID: r.clientgroupid,

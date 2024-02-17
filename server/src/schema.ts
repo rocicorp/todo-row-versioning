@@ -4,15 +4,17 @@ import type {Executor} from './pg.js';
 export async function createDatabase(executor: Executor, dbConfig: PGConfig) {
   console.log('creating database');
   const schemaVersion = await dbConfig.getSchemaVersion(executor);
-  if (schemaVersion < 0 || schemaVersion > 1) {
-    throw new Error('Unexpected schema version: ' + schemaVersion);
-  }
-  if (schemaVersion === 0) {
-    await createSchemaVersion1(executor);
+  if (schemaVersion !== 2) {
+    await createSchemaVersion2(executor);
   }
 }
 
-export async function createSchemaVersion1(executor: Executor) {
+export async function createSchemaVersion2(executor: Executor) {
+  await executor(
+    `drop table if exists replicache_meta, replicache_client_group,
+    replicache_client, list, share, item cascade`,
+  );
+
   await executor(
     'create table replicache_meta (key text primary key, value json)',
   );
@@ -23,6 +25,7 @@ export async function createSchemaVersion1(executor: Executor) {
   // cvrversion is null until first pull initializes it.
   await executor(`create table replicache_client_group (
     id varchar(36) primary key not null,
+    userid varchar(36) not null,
     cvrversion integer null,
     clientversion integer not null,
     lastmodified timestamp(6) not null

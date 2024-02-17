@@ -62,6 +62,7 @@ export async function pull(
       const baseClientGroupRecord = await getClientGroup(
         executor,
         clientGroupID,
+        userID,
       );
 
       const [clientChanges, listMeta] = await Promise.all([

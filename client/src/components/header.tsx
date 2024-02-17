@@ -1,3 +1,4 @@
+import {useState} from 'react';
 import TodoTextInput from './todo-text-input';
 
 const Header = ({
@@ -17,6 +18,8 @@ const Header = ({
   onUserIDChange: (userID: string) => void;
   onShare: () => void;
 }) => {
+  const [typedUserID, setTypedUserID] = useState(userID);
+
   const handleNewList = () => {
     const name = prompt('Enter a new list name');
     if (name) {
@@ -40,8 +43,9 @@ const Header = ({
           <input
             type="text"
             id="userID"
-            value={userID}
-            onChange={e => onUserIDChange(e.target.value)}
+            value={typedUserID}
+            onChange={e => setTypedUserID(e.target.value)}
+            onBlur={e => onUserIDChange(e.target.value)}
           />
         </div>
         <div id="buttons">

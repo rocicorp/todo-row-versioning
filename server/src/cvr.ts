@@ -1,38 +1,43 @@
 import type {SearchResult} from './data';
 
-export class ClientViewData {
-  constructor() {
-    this._data = new Map();
-  }
+export type CVR = Record<string, CVREntries>;
+export type CVREntries = Record<string, number>;
 
-  static fromSearchResult(result: SearchResult[]) {
-    const cvr = new ClientViewData();
-    for (const row of result) {
-      cvr._data.set(row.id, row.rowversion);
-    }
-    return cvr;
+export function cvrEntriesFromSearch(result: SearchResult[]) {
+  const r: CVREntries = {};
+  for (const row of result) {
+    r[row.id] = row.rowversion;
   }
+  return r;
+}
 
-  private _data: Map<string, number> = new Map();
+export type CVRDiff = Record<string, CVREntryDiff>;
+export type CVREntryDiff = {
+  puts: string[];
+  dels: string[];
+};
 
-  getPutsSince(cvr: ClientViewData) {
-    const puts: string[] = [];
-    for (const [id, rowversion] of this._data) {
-      const prev = cvr._data.get(id);
-      if (prev === undefined || prev < rowversion) {
-        puts.push(id);
-      }
-    }
-    return puts;
+export function diffCVR(prev: CVR, next: CVR) {
+  const r: CVRDiff = {};
+  const names = [...new Set([...Object.keys(prev), ...Object.keys(next)])];
+  for (const name of names) {
+    const prevEntries = prev[name] ?? {};
+    const nextEntries = next[name] ?? {};
+    r[name] = {
+      puts: Object.keys(nextEntries).filter(
+        id =>
+          prevEntries[id] === undefined || prevEntries[id] < nextEntries[id],
+      ),
+      dels: Object.keys(prevEntries).filter(
+        id => nextEntries[id] === undefined,
+      ),
+    };
   }
+  return r;
+}
 
-  getDelsSince(cvr: ClientViewData) {
-    const dels: string[] = [];
-    for (const [id] of cvr._data) {
-      if (!this._data.get(id)) {
-        dels.push(id);
-      }
-    }
-    return dels;
-  }
+export function isCVRDiffEmpty(diff: CVRDiff) {
+  return Object.values(diff).every(
+    e => e.puts.length === 0 && e.dels.length === 0,
+  );
 }

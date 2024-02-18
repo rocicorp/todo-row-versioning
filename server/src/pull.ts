@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import type {PatchOperation, PullResponse, PullResponseOKV1} from 'replicache';
+import type {PatchOperation, PullResponse} from 'replicache';
 import type Express from 'express';
 import {transact} from './pg';
 import {
@@ -13,11 +13,18 @@ import {
   searchShares,
   searchTodos,
 } from './data';
-import {ClientViewData} from './cvr';
+import {
+  cvrEntriesFromSearch,
+  type CVR,
+  diffCVR,
+  isCVRDiffEmpty,
+  CVREntries,
+} from './cvr';
+import {nanoid} from 'nanoid';
 
 const cookie = z.object({
   order: z.number(),
-  clientGroupID: z.string(),
+  cvrID: z.string(),
 });
 
 type Cookie = z.infer<typeof cookie>;
@@ -27,16 +34,11 @@ const pullRequest = z.object({
   cookie: z.union([cookie, z.null()]),
 });
 
-type ClientViewRecord = {
-  list: ClientViewData;
-  todo: ClientViewData;
-  share: ClientViewData;
-  clientVersion: number;
-};
-
 // cvrKey -> ClientViewRecord
-const cvrCache = new Map<string, ClientViewRecord>();
+const cvrCache = new Map<string, CVR>();
 
+// Implements the algorithm from:
+// https://doc.replicache.dev/strategies/row-version#pull
 export async function pull(
   userID: string,
   requestBody: Express.Request,
@@ -46,145 +48,145 @@ export async function pull(
   const pull = pullRequest.parse(requestBody);
 
   const {clientGroupID} = pull;
-  const prevCVR = pull.cookie
-    ? cvrCache.get(makeCVRKey(pull.cookie))
-    : undefined;
-  const baseCVR = prevCVR ?? {
-    list: new ClientViewData(),
-    todo: new ClientViewData(),
-    share: new ClientViewData(),
-    clientVersion: 0,
-  };
+  // 1: Fetch prevCVR
+  const prevCVR = pull.cookie ? cvrCache.get(pull.cookie.cvrID) : undefined;
+  // 2: Init baseCVR
+  const baseCVR: CVR = prevCVR ?? {};
   console.log({prevCVR, baseCVR});
 
-  const {nextCVRVersion, nextCVR, clientChanges, lists, shares, todos} =
-    await transact(async executor => {
-      const baseClientGroupRecord = await getClientGroup(
-        executor,
+  // 3: begin transaction
+  const txResult = await transact(async executor => {
+    // 4-5: getClientGroup(body.clientGroupID), verify user
+    const baseClientGroupRecord = await getClientGroup(
+      executor,
+      clientGroupID,
+      userID,
+    );
+
+    const [listMeta, clientMeta] = await Promise.all([
+      // 6: Read all domain data, just ids and versions
+      searchLists(executor, {accessibleByUserID: userID}),
+      // 7: Read all clients in CG
+      searchClients(executor, {
         clientGroupID,
-        userID,
-      );
+      }),
+    ]);
 
-      const [clientChanges, listMeta] = await Promise.all([
-        searchClients(executor, {
-          clientGroupID,
-          sinceClientVersion: baseCVR.clientVersion,
-        }),
-        searchLists(executor, {accessibleByUserID: userID}),
-      ]);
+    console.log({baseClientGroupRecord, clientMeta, listMeta});
 
-      console.log({baseClientGroupRecord, clientChanges, listMeta});
+    // 6: Read all domain data, just ids and versions
+    const listIDs = listMeta.map(l => l.id);
+    const [todoMeta, shareMeta] = await Promise.all([
+      searchTodos(executor, {listIDs}),
+      searchShares(executor, {listIDs}),
+    ]);
+    console.log({todoMeta, shareMeta});
 
-      // TODO: Should be able to do this join in the database and eliminate a round-trip.
-      const listIDs = listMeta.map(l => l.id);
-      const [todoMeta, shareMeta] = await Promise.all([
-        searchTodos(executor, {listIDs}),
-        searchShares(executor, {listIDs}),
-      ]);
+    // 8: Build nextCVR
+    const nextCVR: CVR = {
+      list: cvrEntriesFromSearch(listMeta),
+      todo: cvrEntriesFromSearch(todoMeta),
+      share: cvrEntriesFromSearch(shareMeta),
+      client: cvrEntriesFromSearch(clientMeta),
+    };
+    console.log({nextCVR});
 
-      console.log({todoMeta, shareMeta});
+    // 9: calculate diffs
+    const diff = diffCVR(baseCVR, nextCVR);
+    console.log({diff});
 
-      const nextCVR: ClientViewRecord = {
-        list: ClientViewData.fromSearchResult(listMeta),
-        todo: ClientViewData.fromSearchResult(todoMeta),
-        share: ClientViewData.fromSearchResult(shareMeta),
-        clientVersion: baseClientGroupRecord.clientVersion,
-      };
+    // 10: If diff is empty, return no-op PR
+    if (prevCVR && isCVRDiffEmpty(diff)) {
+      return null;
+    }
 
-      const listPuts = nextCVR.list.getPutsSince(baseCVR.list);
-      const sharePuts = nextCVR.share.getPutsSince(baseCVR.share);
-      const todoPuts = nextCVR.todo.getPutsSince(baseCVR.todo);
+    // 11: get entities
+    const [lists, shares, todos] = await Promise.all([
+      getLists(executor, diff.list.puts),
+      getShares(executor, diff.share.puts),
+      getTodos(executor, diff.todo.puts),
+    ]);
+    console.log({lists, shares, todos});
 
-      // Replicache ClientGroups can be forked from an existing
-      // ClientGroup with existing state and cookie. In this case we
-      // might see a new CG getting a pull with a non-null cookie.
-      // For these CG's, initialize to incoming cookie.
-      let prevCVRVersion = baseClientGroupRecord.cvrVersion;
-      if (prevCVRVersion === null) {
-        if (pull.cookie !== null) {
-          prevCVRVersion = pull.cookie.order;
-        } else {
-          prevCVRVersion = 0;
-        }
-        console.log(
-          `ClientGroup ${clientGroupID} is new, initializing to ${prevCVRVersion}`,
-        );
-      }
+    // 12: changed clients - no need to re-read clients from database,
+    // we already have their versions.
+    const clients: CVREntries = {};
+    for (const clientID of diff.client.puts) {
+      clients[clientID] = nextCVR.client[clientID];
+    }
+    console.log({clients});
 
-      const nextClientGroupRecord = {
-        ...baseClientGroupRecord,
-        cvrVersion: prevCVRVersion + 1,
-      };
+    // 13: newCVRVersion
+    const baseCVRVersion = pull.cookie?.order ?? 0;
+    const nextCVRVersion =
+      Math.max(baseCVRVersion, baseClientGroupRecord.cvrVersion) + 1;
 
-      console.log({listPuts, sharePuts, todoPuts, nextClientGroupRecord});
+    // 14: Write ClientGroupRecord
+    const nextClientGroupRecord = {
+      ...baseClientGroupRecord,
+      cvrVersion: nextCVRVersion,
+    };
+    console.log({nextClientGroupRecord});
+    await putClientGroup(executor, nextClientGroupRecord);
 
-      const [lists, shares, todos] = await Promise.all([
-        getLists(executor, listPuts),
-        getShares(executor, sharePuts),
-        getTodos(executor, todoPuts),
-        putClientGroup(executor, nextClientGroupRecord),
-      ]);
+    return {
+      entities: {
+        list: {dels: diff.list.dels, puts: lists},
+        share: {dels: diff.share.dels, puts: shares},
+        todo: {dels: diff.todo.dels, puts: todos},
+      },
+      clients,
+      nextCVR,
+      nextCVRVersion,
+    };
+  });
 
-      return {
-        nextCVRVersion: nextClientGroupRecord.cvrVersion,
-        nextCVR,
-        clientChanges,
-        lists,
-        shares,
-        todos,
-      };
-    });
+  // 10: If diff is empty, return no-op PR
+  if (txResult === null) {
+    return {
+      cookie: pull.cookie,
+      lastMutationIDChanges: {},
+      patch: [],
+    };
+  }
 
-  console.log({nextCVRVersion, nextCVR, clientChanges, lists, shares, todos});
+  const {entities, clients, nextCVR, nextCVRVersion} = txResult;
 
-  const listDels = nextCVR.list.getDelsSince(baseCVR.list);
-  const shareDels = nextCVR.share.getDelsSince(baseCVR.share);
-  const todoDels = nextCVR.todo.getDelsSince(baseCVR.todo);
+  // 16-17: store cvr
+  const cvrID = nanoid();
+  cvrCache.set(cvrID, nextCVR);
 
-  console.log({listDels, shareDels, todoDels});
-
+  // 18(i): build patch
   const patch: PatchOperation[] = [];
-
   if (prevCVR === undefined) {
     patch.push({op: 'clear'});
   }
 
-  for (const id of listDels) {
-    patch.push({op: 'del', key: `list/${id}`});
-  }
-  for (const list of lists) {
-    patch.push({op: 'put', key: `list/${list.id}`, value: list});
-  }
-  for (const id of shareDels) {
-    patch.push({op: 'del', key: `share/${id}`});
-  }
-  for (const share of shares) {
-    patch.push({op: 'put', key: `share/${share.id}`, value: share});
-  }
-  for (const id of todoDels) {
-    patch.push({op: 'del', key: `todo/${id}`});
-  }
-  for (const todo of todos) {
-    patch.push({op: 'put', key: `todo/${todo.id}`, value: todo});
+  for (const [name, {puts, dels}] of Object.entries(entities)) {
+    for (const id of dels) {
+      patch.push({op: 'del', key: `${name}/${id}`});
+    }
+    for (const entity of puts) {
+      patch.push({
+        op: 'put',
+        key: `${name}/${entity.id}`,
+        value: entity,
+      });
+    }
   }
 
-  const respCookie: Cookie = {
-    clientGroupID,
+  // 18(ii): construct cookie
+  const cookie: Cookie = {
     order: nextCVRVersion,
+    cvrID,
   };
-  const resp: PullResponseOKV1 = {
-    cookie: respCookie,
-    lastMutationIDChanges: Object.fromEntries(
-      clientChanges.map(e => [e.id, e.lastMutationID] as const),
-    ),
+
+  // 17(iii): lastMutationIDChanges
+  const lastMutationIDChanges = clients;
+
+  return {
+    cookie,
+    lastMutationIDChanges,
     patch,
   };
-
-  cvrCache.set(makeCVRKey(respCookie), nextCVR);
-
-  return resp;
-}
-
-function makeCVRKey({order, clientGroupID}: Cookie) {
-  return `${clientGroupID}/${order}`;
 }

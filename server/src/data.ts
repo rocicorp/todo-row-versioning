@@ -9,15 +9,13 @@ export type SearchResult = {
 export type ClientGroupRecord = {
   id: string;
   userID: string;
-  cvrVersion: number | null;
-  clientVersion: number;
+  cvrVersion: number;
 };
 
 export type ClientRecord = {
   id: string;
   clientGroupID: string;
   lastMutationID: number;
-  clientVersion: number;
 };
 
 export type Affected = {
@@ -34,7 +32,7 @@ export async function createList(
     throw new Error('Authorization error, cannot create list for other user');
   }
   await executor(
-    `insert into list (id, ownerid, name, rowversion, lastmodified) values ($1, $2, $3, 1, now())`,
+    `insert into list (id, ownerid, name, lastmodified) values ($1, $2, $3, now())`,
     [list.id, list.ownerID, list.name],
   );
   return {listIDs: [], userIDs: [list.ownerID]};
@@ -59,7 +57,7 @@ export async function searchLists(
   {accessibleByUserID}: {accessibleByUserID: string},
 ) {
   const {rows} = await executor(
-    `select id, rowversion from list where ownerid = $1 or ` +
+    `select id, xmin as rowversion from list where ownerid = $1 or ` +
       `id in (select listid from share where userid = $1)`,
     [accessibleByUserID],
   );
@@ -91,7 +89,7 @@ export async function createShare(
 ): Promise<Affected> {
   await requireAccessToList(executor, share.listID, userID);
   await executor(
-    `insert into share (id, listid, userid, rowversion, lastmodified) values ($1, $2, $3, 1, now())`,
+    `insert into share (id, listid, userid, lastmodified) values ($1, $2, $3, now())`,
     [share.id, share.listID, share.userID],
   );
   return {
@@ -124,7 +122,7 @@ export async function searchShares(
 ) {
   if (listIDs.length === 0) return [];
   const {rows} = await executor(
-    `select s.id, s.rowversion from share s, list l where s.listid = l.id and l.id in (${getPlaceholders(
+    `select s.id, s.xmin as rowversion from share s, list l where s.listid = l.id and l.id in (${getPlaceholders(
       listIDs.length,
     )})`,
     listIDs,
@@ -162,7 +160,7 @@ export async function createTodo(
   );
   const maxOrd = rows[0]?.maxord ?? 0;
   await executor(
-    `insert into item (id, listid, title, complete, ord, rowversion, lastmodified) values ($1, $2, $3, $4, $5, 1, now())`,
+    `insert into item (id, listid, title, complete, ord, lastmodified) values ($1, $2, $3, $4, $5, now())`,
     [todo.id, todo.listID, todo.text, todo.completed, maxOrd + 1],
   );
   return {
@@ -179,7 +177,7 @@ export async function updateTodo(
   const todo = await mustGetTodo(executor, update.id);
   await requireAccessToList(executor, todo.listID, userID);
   await executor(
-    `update item set title = coalesce($1, title), complete = coalesce($2, complete), ord = coalesce($3, ord), rowversion = rowversion + 1, lastmodified = now() where id = $4`,
+    `update item set title = coalesce($1, title), complete = coalesce($2, complete), ord = coalesce($3, ord), lastmodified = now() where id = $4`,
     [update.text, update.completed, update.sort, update.id],
   );
   return {
@@ -208,7 +206,7 @@ export async function searchTodos(
 ) {
   if (listIDs.length === 0) return [];
   const {rows} = await executor(
-    `select id, rowversion from item where listid in (${getPlaceholders(
+    `select id, xmin as rowversion from item where listid in (${getPlaceholders(
       listIDs.length,
     )})`,
     listIDs,
@@ -248,15 +246,15 @@ export async function putClientGroup(
   executor: Executor,
   clientGroup: ClientGroupRecord,
 ) {
-  const {id, userID, cvrVersion, clientVersion} = clientGroup;
+  const {id, userID, cvrVersion} = clientGroup;
   await executor(
     `insert into replicache_client_group
-      (id, userid, cvrversion, clientversion, lastmodified)
+      (id, userid, cvrversion, lastmodified)
     values
-      ($1, $2, $3, $4, now())
+      ($1, $2, $3, now())
     on conflict (id) do update set
-      userid = $2, cvrversion = $3, clientversion = $4, lastmodified = now()`,
-    [id, userID, cvrVersion, clientVersion],
+      userid = $2, cvrversion = $3, lastmodified = now()`,
+    [id, userID, cvrVersion],
   );
 }
 
@@ -266,15 +264,14 @@ export async function getClientGroup(
   userID: string,
 ): Promise<ClientGroupRecord> {
   const {rows} = await executor(
-    `select userid, cvrversion, clientversion from replicache_client_group where id = $1`,
+    `select userid, cvrversion from replicache_client_group where id = $1`,
     [clientGroupID],
   );
   if (!rows || rows.length === 0) {
     return {
       id: clientGroupID,
       userID,
-      cvrVersion: null,
-      clientVersion: 0,
+      cvrVersion: 0,
     };
   }
   const r = rows[0];
@@ -285,30 +282,18 @@ export async function getClientGroup(
     id: clientGroupID,
     userID: r.userid,
     cvrVersion: r.cvrversion,
-    clientVersion: r.clientversion,
   };
 }
 
 export async function searchClients(
   executor: Executor,
-  {
-    clientGroupID,
-    sinceClientVersion,
-  }: {clientGroupID: string; sinceClientVersion: number},
+  {clientGroupID}: {clientGroupID: string},
 ) {
   const {rows} = await executor(
-    `select id, lastmutationid, clientversion from replicache_client where clientGroupID = $1 and clientversion > $2`,
-    [clientGroupID, sinceClientVersion],
+    `select id, lastmutationid as rowversion from replicache_client where clientGroupID = $1`,
+    [clientGroupID],
   );
-  return rows.map(r => {
-    const client: ClientRecord = {
-      id: r.id,
-      clientGroupID,
-      lastMutationID: r.lastmutationid,
-      clientVersion: r.clientversion,
-    };
-    return client;
-  });
+  return rows as SearchResult[];
 }
 
 export async function getClient(
@@ -317,7 +302,7 @@ export async function getClient(
   clientGroupID: string,
 ): Promise<ClientRecord> {
   const {rows} = await executor(
-    `select clientgroupid, lastmutationid, clientversion from replicache_client where id = $1`,
+    `select clientgroupid, lastmutationid from replicache_client where id = $1`,
     [clientID],
   );
   if (!rows || rows.length === 0)
@@ -325,7 +310,6 @@ export async function getClient(
       id: clientID,
       clientGroupID: '',
       lastMutationID: 0,
-      clientVersion: 0,
     };
   const r = rows[0];
   if (r.clientgroupid !== clientGroupID) {
@@ -337,22 +321,21 @@ export async function getClient(
     id: r.id,
     clientGroupID: r.clientgroupid,
     lastMutationID: r.lastmutationid,
-    clientVersion: r.lastclientversion,
   };
 }
 
 export async function putClient(executor: Executor, client: ClientRecord) {
-  const {id, clientGroupID, lastMutationID, clientVersion} = client;
+  const {id, clientGroupID, lastMutationID} = client;
   await executor(
     `
       insert into replicache_client
-        (id, clientgroupid, lastmutationid, clientversion, lastmodified)
+        (id, clientgroupid, lastmutationid, lastmodified)
       values
-        ($1, $2, $3, $4, now())
+        ($1, $2, $3, now())
       on conflict (id) do update set
-        lastmutationid = $3, clientversion = $4, lastmodified = now()
+        lastmutationid = $3, lastmodified = now()
       `,
-    [id, clientGroupID, lastMutationID, clientVersion],
+    [id, clientGroupID, lastMutationID],
   );
 }
 

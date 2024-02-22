@@ -63,11 +63,8 @@ async function withExecutorAndPool<R>(
       console.log('Running query', sql, params);
       return await client.query(sql, params);
     } catch (e) {
-      console.error('original error from pg', e);
-      throw new Error(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        `Error executing SQL: ${sql}: ${(e as unknown as any).toString()}`,
-      );
+      console.error('Error executing SQL', e);
+      throw e;
     }
   };
 
@@ -122,7 +119,8 @@ async function transactWithExecutor<R>(
   throw new Error('Tried to execute transacation too many times. Giving up.');
 }
 
-//stackoverflow.com/questions/60339223/node-js-transaction-coflicts-in-postgresql-optimistic-concurrency-control-and
+// Because we are using SERIALIZABLE isolation level, we need to be prepared to retry transactions.
+// stackoverflow.com/questions/60339223/node-js-transaction-coflicts-in-postgresql-optimistic-concurrency-control-and
 function shouldRetryTransaction(err: unknown) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const code = typeof err === 'object' ? String((err as any).code) : null;

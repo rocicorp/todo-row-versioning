@@ -63,7 +63,7 @@ async function withExecutorAndPool<R>(
       console.log('Running query', sql, params);
       return await client.query(sql, params);
     } catch (e) {
-      console.error('Error executing SQL', e);
+      console.warn(`Error executing SQL: ${e}`);
       throw e;
     }
   };
@@ -102,7 +102,7 @@ async function transactWithExecutor<R>(
         await executor('commit');
         return r;
       } catch (e) {
-        console.log('caught error', e, 'rolling back');
+        console.log(`caught error ${e} - rolling back`);
         await executor('rollback');
         throw e;
       }

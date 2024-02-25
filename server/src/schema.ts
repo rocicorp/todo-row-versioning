@@ -1,11 +1,10 @@
-import type {PGConfig} from './pgconfig/pgconfig.js';
 import type {Executor} from './pg.js';
 
 const schemaVersion = 3;
 
-export async function createDatabase(executor: Executor, dbConfig: PGConfig) {
+export async function createDatabase(executor: Executor) {
   console.log('creating database');
-  const actualSchemaVersion = await dbConfig.getSchemaVersion(executor);
+  const actualSchemaVersion = await getSchemaVersion(executor);
   if (schemaVersion !== actualSchemaVersion) {
     await createSchema(executor);
   }
@@ -61,4 +60,16 @@ export async function createSchema(executor: Executor) {
     ord integer not null,
     lastmodified timestamp(6) not null
     )`);
+}
+
+async function getSchemaVersion(executor: Executor) {
+  const metaExists = await executor(`select exists(
+    select from pg_tables where schemaname = 'public' and tablename = 'replicache_meta')`);
+  if (!metaExists.rows[0].exists) {
+    return 0;
+  }
+  const qr = await executor(
+    `select value from replicache_meta where key = 'schemaVersion'`,
+  );
+  return qr.rows[0].value;
 }

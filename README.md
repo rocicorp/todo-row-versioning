@@ -27,6 +27,11 @@ The server will correctly send to the requesting client the difference from its 
 
 ## 1. Setup
 
+#### Install Postgres
+
+You will need a local Postgres database to use this sample.
+On MacOS, we recommend [Postgres.app](https://postgresapp.com/).
+
 #### Get your Replicache License Key
 
 ```bash
@@ -45,10 +50,18 @@ $ export VITE_REPLICACHE_LICENSE_KEY="<your license key>"
 $ npm install; npm run build;
 ```
 
-## 2. Start frontend and backend watcher
+## 2. Develop
+
+#### Create a new, empty database
 
 ```bash
-$ npm run watch --ws
+psql -c 'create database todo'
+```
+
+### Start frontend and backend watcher
+
+```bash
+$ DATABASE_URL='postgresql://localhost/todo' npm run watch --ws
 ```
 
 Provides an example integrating replicache with react in a simple todo application.

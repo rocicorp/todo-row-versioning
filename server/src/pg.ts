@@ -1,8 +1,8 @@
 // Low-level config and utilities for Postgres.
 
+import pg from 'pg';
 import type {Pool, QueryResult} from 'pg';
 import {createDatabase} from './schema.js';
-import {getDBConfig} from './pgconfig/pgconfig.js';
 
 const pool = getPool();
 
@@ -20,8 +20,21 @@ async function getPool() {
 async function initPool() {
   console.log('creating global pool');
 
-  const dbConfig = getDBConfig();
-  const pool = dbConfig.initPool();
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error('Required env var DATABASE_URL not set');
+  }
+
+  const ssl =
+    process.env.NODE_ENV === 'production'
+      ? {
+          rejectUnauthorized: false,
+        }
+      : undefined;
+  const pool = new pg.Pool({
+    connectionString: url,
+    ssl,
+  });
 
   // the pool will emit an error on behalf of any idle clients
   // it contains if a backend error or network partition happens
@@ -39,7 +52,7 @@ async function initPool() {
 
   await withExecutorAndPool(async executor => {
     await transactWithExecutor(executor, async executor => {
-      await createDatabase(executor, dbConfig);
+      await createDatabase(executor);
     });
   }, pool);
 

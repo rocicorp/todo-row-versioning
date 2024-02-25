@@ -1,6 +1,6 @@
 import type {Executor} from './pg.js';
 
-const schemaVersion = 3;
+const schemaVersion = 4;
 
 export async function createDatabase(executor: Executor) {
   console.log('creating database');

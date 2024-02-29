@@ -1,15 +1,7 @@
-import {useState} from 'react';
+import {Show, createSignal} from 'solid-js';
 import TodoTextInput from './todo-text-input';
 
-const Header = ({
-  listName,
-  userID,
-  onNewItem,
-  onNewList,
-  onDeleteList,
-  onUserIDChange,
-  onShare,
-}: {
+const Header = (props: {
   listName: string | undefined;
   userID: string;
   onNewItem: (text: string) => void;
@@ -18,12 +10,12 @@ const Header = ({
   onUserIDChange: (userID: string) => void;
   onShare: () => void;
 }) => {
-  const [typedUserID, setTypedUserID] = useState(userID);
+  const [typedUserID, setTypedUserID] = createSignal(props.userID);
 
   const handleNewList = () => {
     const name = prompt('Enter a new list name');
     if (name) {
-      onNewList(name);
+      props.onNewList(name);
     }
   };
 
@@ -31,50 +23,46 @@ const Header = ({
     if (!confirm('Really delete current list?')) {
       return;
     }
-    onDeleteList();
+    props.onDeleteList();
   };
 
   return (
-    <header className="header">
-      <h1>{listName ?? 'todos'}</h1>
+    <header class="header">
+      <h1>{props.listName ?? 'todos'}</h1>
       <div id="toolbar">
         <div id="login">
           UserID:&nbsp;
           <input
             type="text"
             id="userID"
-            value={typedUserID}
-            onChange={e => setTypedUserID(e.target.value)}
-            onBlur={e => onUserIDChange(e.target.value)}
+            value={typedUserID()}
+            onInput={e => setTypedUserID(e.target.value)}
+            onBlur={e => props.onUserIDChange(e.target.value)}
           />
         </div>
         <div id="buttons">
-          <input
-            type="button"
-            onClick={() => handleNewList()}
-            value="New List"
-          />
+          <input type="button" onClick={handleNewList} value="New List" />
           <input
             type="button"
             value="Delete List"
-            disabled={!listName}
+            disabled={!props.listName}
             onClick={() => handleDeleteList()}
           />
           <input
             type="button"
             value="Share"
-            disabled={!listName}
-            onClick={() => onShare()}
+            disabled={!props.listName}
+            onClick={() => props.onShare()}
           />
         </div>
       </div>
-      {listName && (
+      <Show when={props.listName}>
         <TodoTextInput
           initial=""
           placeholder="What needs to be done?"
-          onSubmit={onNewItem}
+          onSubmit={props.onNewItem}
         />
-      )}
+      </Show>
     </header>
   );
 };

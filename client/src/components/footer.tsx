@@ -1,41 +1,40 @@
-import React from 'react';
+import {For} from 'solid-js';
 import FilterLink from './link';
 
 const FILTER_TITLES = ['All', 'Active', 'Completed'];
 
-const Footer = ({
-  active,
-  completed,
-  currentFilter,
-  onFilter,
-  onDeleteCompleted,
-}: {
+const Footer = (props: {
   active: number;
   completed: number;
   currentFilter: string;
   onFilter: (filter: string) => void;
   onDeleteCompleted: () => void;
 }) => {
-  const itemWord = active === 1 ? 'item' : 'items';
+  const itemWord = () => (props.active === 1 ? 'item' : 'items');
   return (
-    <footer className="footer">
-      <span className="todo-count">
-        <strong>{active || 'No'}</strong> {itemWord} left
+    <footer class="footer">
+      <span class="todo-count">
+        <strong>{props.active || 'No'}</strong> {itemWord()} left
       </span>
-      <ul className="filters">
-        {FILTER_TITLES.map(filter => (
-          <li key={filter}>
-            <FilterLink
-              onClick={() => onFilter(filter)}
-              selected={filter === currentFilter}
-            >
-              {filter}
-            </FilterLink>
-          </li>
-        ))}
+      <ul class="filters">
+        <For each={FILTER_TITLES}>
+          {filter => (
+            <li>
+              <FilterLink
+                onClick={() => props.onFilter(filter)}
+                selected={filter === props.currentFilter}
+              >
+                {filter}
+              </FilterLink>
+            </li>
+          )}
+        </For>
       </ul>
-      {completed > 0 && (
-        <button className="clear-completed" onClick={() => onDeleteCompleted()}>
+      {props.completed > 0 && (
+        <button
+          class="clear-completed"
+          onClick={() => props.onDeleteCompleted()}
+        >
           Clear completed
         </button>
       )}

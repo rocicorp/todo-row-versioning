@@ -79,26 +79,15 @@ body,
   font-size: 120%;
 }
 
-#share-overlay {
-  position: fixed;
-  width: 100%;
-  height: 100%;
-  left: 0px;
-  top: 0px;
+::backdrop {
   background-color: rgba(0, 0, 0, 0.3);
-  z-index: 10000;
 }
 
-#share-content {
-  position: fixed;
-  width: 300px;
-  left: 50%;
-  top: 200px;
-  margin-left: -180px;
+.share-dialog {
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.25);
+  border: 0;
   padding: 0 30px 30px 30px;
   background: white;
-  z-index: 10001;
 }
 
 #share-content form {

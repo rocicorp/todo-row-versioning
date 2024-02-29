@@ -1,24 +1,17 @@
-import React from 'react';
-import classnames from 'classnames';
+import {JSX} from 'solid-js';
 
-const Link = ({
-  children,
-  selected,
-  onClick,
-}: {
-  children: any;
+const Link = (props: {
+  children: JSX.Element;
   selected: boolean;
   onClick: () => void;
-}) => {
-  return (
-    <a
-      className={classnames({selected})}
-      style={{cursor: 'pointer'}}
-      onClick={() => onClick()}
-    >
-      {children}
-    </a>
-  );
-};
+}) => (
+  <a
+    classList={{selected: props.selected}}
+    style={{cursor: 'pointer'}}
+    onClick={() => props.onClick()}
+  >
+    {props.children}
+  </a>
+);
 
 export default Link;

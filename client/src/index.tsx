@@ -1,12 +1,13 @@
+import {Route, Router} from '@solidjs/router';
 import {nanoid} from 'nanoid';
-import React, {useCallback, useEffect, useState} from 'react';
-import ReactDOM from 'react-dom/client';
 import {Replicache} from 'replicache';
-import App from './app';
+import {Show, createEffect, createSignal, onCleanup, onMount} from 'solid-js';
+import {render} from 'solid-js/web';
+import App from './app.jsx';
 import './index.css';
 import {M, mutators} from './mutators';
 
-async function init() {
+function init() {
   // See https://doc.replicache.dev/licensing for how to get a license key.
   const licenseKey = import.meta.env.VITE_REPLICACHE_LICENSE_KEY;
   if (!licenseKey) {
@@ -14,43 +15,50 @@ async function init() {
   }
 
   function Root() {
-    const [userID, setUserID] = useState('');
-    const [r, setR] = useState<Replicache<M> | null>(null);
+    const [userID, setUserID] = createSignal('');
+    const [r, setR] = createSignal<Replicache<M> | null>(null);
 
-    useEffect(() => {
-      if (!userID) {
+    createEffect(() => {
+      if (!userID()) {
         return;
       }
       console.log('updating replicache');
-      const r = new Replicache({
-        name: userID,
+
+      const newInstance = new Replicache({
+        name: userID(),
         licenseKey,
         mutators,
-        pushURL: `/api/replicache/push?userID=${userID}`,
-        pullURL: `/api/replicache/pull?userID=${userID}`,
+        pushURL: `/api/replicache/push?userID=${userID()}`,
+        pullURL: `/api/replicache/pull?userID=${userID()}`,
         logLevel: 'debug',
       });
-      setR(r);
-      return () => {
-        void r.close();
-      };
-    }, [userID]);
+      setR(newInstance);
 
-    const storageListener = useCallback(() => {
+      onCleanup(async () => {
+        const instance = r();
+        if (instance) {
+          console.log('closing replicache');
+          await instance.close();
+        }
+      });
+    });
+
+    const storageListener = () => {
       let userID = localStorage.getItem('userID');
       if (!userID) {
         userID = nanoid(6);
         localStorage.setItem('userID', userID);
       }
       setUserID(userID);
-    }, []);
-    useEffect(() => {
-      storageListener();
+    };
+
+    storageListener();
+    onMount(() => {
       addEventListener('storage', storageListener, false);
-      return () => {
+      onCleanup(() => {
         removeEventListener('storage', storageListener, false);
-      };
-    }, []);
+      });
+    });
 
     const handleUserIDChange = (userID: string) => {
       localStorage.setItem('userID', userID);
@@ -58,21 +66,26 @@ async function init() {
     };
 
     return (
-      r && (
-        <App
-          rep={r}
-          userID={userID}
-          onUserIDChange={userID => handleUserIDChange(userID)}
+      <Router>
+        <Route
+          path={['/', '/list/:listID']}
+          component={() => (
+            <Show when={r()} keyed>
+              {rep => (
+                <App
+                  rep={rep}
+                  userID={userID()}
+                  onUserIDChange={handleUserIDChange}
+                />
+              )}
+            </Show>
+          )}
         />
-      )
+      </Router>
     );
   }
 
-  ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-    <React.StrictMode>
-      <Root />
-    </React.StrictMode>,
-  );
+  render(() => <Root />, document.getElementById('root') as HTMLElement);
 }
 
-await init();
+init();

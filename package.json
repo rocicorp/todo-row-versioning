@@ -16,7 +16,12 @@
   },
   "type": "module",
   "eslintConfig": {
-    "extends": "@rocicorp/eslint-config"
+    "extends": "@rocicorp/eslint-config",
+    "rules": {
+      "@typescript-eslint/naming-convention": [
+        "off"
+      ]
+    }
   },
   "prettier": "@rocicorp/prettier-config",
   "engines": {

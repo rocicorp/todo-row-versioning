@@ -1,57 +1,45 @@
-import React, {
-  ChangeEvent,
-  FocusEvent,
-  KeyboardEvent,
-  useRef,
-  useState,
-} from 'react';
-import classnames from 'classnames';
+import {createSignal} from 'solid-js';
 
-export default function TodoTextInput({
-  initial,
-  placeholder,
-  onBlur,
-  onSubmit,
-}: {
+const TodoTextInput = (props: {
   initial: string;
   placeholder?: string;
   onBlur?: (text: string) => void;
   onSubmit: (text: string) => void;
-}) {
-  const [textInput, setTextInput] = useState(initial);
-  const ref = useRef<HTMLInputElement>(null);
+}) => {
+  const [textInput, setTextInput] = createSignal(props.initial);
 
-  const handleSubmit = async (e: KeyboardEvent<HTMLInputElement>) => {
+  const handleSubmit = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
-      onSubmit(textInput);
-      setTextInput('');
+      props.onSubmit(textInput());
+      setTextInput(() => '');
     }
   };
 
-  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setTextInput(e.target.value);
+  const handleChange = (e: InputEvent) => {
+    setTextInput((e.target as HTMLInputElement).value);
   };
 
-  const handleBlur = (_e: FocusEvent<HTMLInputElement>) => {
-    if (onBlur) {
-      onBlur(textInput);
+  const handleBlur = () => {
+    if (props.onBlur) {
+      props.onBlur(textInput());
     }
   };
 
   return (
     <input
-      ref={ref}
-      className={classnames({
-        'edit': initial !== '',
-        'new-todo': initial === '',
-      })}
+      classList={{
+        'edit': props.initial !== '',
+        'new-todo': props.initial === '',
+      }}
       type="text"
-      placeholder={placeholder}
-      autoFocus={true}
-      value={textInput}
+      placeholder={props.placeholder}
+      autofocus={true}
+      value={textInput()}
       onBlur={handleBlur}
-      onChange={handleChange}
+      onInput={handleChange}
       onKeyDown={handleSubmit}
     />
   );
-}
+};
+
+export default TodoTextInput;

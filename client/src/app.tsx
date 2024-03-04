@@ -1,15 +1,22 @@
 import {A, useNavigate, useParams} from '@solidjs/router';
 import {nanoid} from 'nanoid';
-import {Replicache} from 'replicache';
-import {List, Todo, TodoUpdate, getList, listLists, todosByList} from 'shared';
+import {
+  MutatorDefs,
+  ReadTransaction,
+  ReadonlyJSONValue,
+  Replicache,
+} from 'replicache';
+import {List, TodoUpdate, getList, listLists, todosByList} from 'shared';
 import {
   Component,
   For,
   JSX,
   createEffect,
   createSignal,
+  on,
   onCleanup,
 } from 'solid-js';
+import {createStore, reconcile} from 'solid-js/store';
 import Header from './components/header.jsx';
 import MainSection from './components/main-section.jsx';
 import Share from './components/share.jsx';
@@ -60,16 +67,37 @@ const App = (props: {
   }, undefined);
 
   // Subscribe to all todos and sort them.
-  const todos = createEffectAccessor<Todo[]>(set => {
-    const {rep} = props;
-    const {listID} = params;
-    onCleanup(
-      rep.subscribe(async tx => {
-        const todos = await todosByList(tx, listID);
-        return todos.sort((a, b) => a.sort - b.sort);
-      }, set),
+  const todos = subscribeStore(
+    () => [props.rep, params.listID],
+    async (tx, listID) => {
+      const todos = await todosByList(tx, listID);
+      return todos.sort((a, b) => a.sort - b.sort);
+    },
+    [],
+  );
+
+  function subscribeStore<
+    T extends object,
+    MD extends MutatorDefs,
+    Deps extends [...args: ReadonlyJSONValue[]],
+  >(
+    deps: () => [Replicache<MD>, ...Deps],
+    query: (tx: ReadTransaction, ...args: Deps) => Promise<T>,
+    def: T,
+  ) {
+    const [state, setState] = createStore<T>(def);
+    createEffect(
+      on(deps, ([rep, ...deps]) =>
+        onCleanup(
+          rep.subscribe(
+            tx => query(tx, ...deps),
+            data => setState(reconcile(data, {merge: true})),
+          ),
+        ),
+      ),
     );
-  }, []);
+    return state;
+  }
 
   // Define event handlers and connect them to Replicache mutators. Each
   // of these mutators runs immediately (optimistically) locally, then runs
@@ -139,7 +167,7 @@ const App = (props: {
         />
         {selectedList() ? (
           <MainSection
-            todos={todos()}
+            todos={todos}
             onUpdateTodo={handleUpdateTodo}
             onDeleteTodos={handleDeleteTodos}
             onCompleteTodos={handleCompleteTodos}

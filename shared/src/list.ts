@@ -1,5 +1,5 @@
-import {z} from 'zod';
 import {generate, Update} from '@rocicorp/rails';
+import {z} from 'zod';
 
 export const listSchema = z.object({
   id: z.string(),

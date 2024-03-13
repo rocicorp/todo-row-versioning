@@ -26,9 +26,15 @@
 // required to get up and running.
 
 import type {WriteTransaction} from 'replicache';
-import {Todo, listTodos, TodoUpdate} from 'shared';
-import {createList, deleteList} from 'shared';
-import {createShare, deleteShare} from 'shared';
+import {
+  Todo,
+  TodoUpdate,
+  createList,
+  createShare,
+  deleteList,
+  deleteShare,
+  listTodos,
+} from 'shared';
 
 export type M = typeof mutators;
 
@@ -42,7 +48,7 @@ export const mutators = {
   updateTodo: async (tx: WriteTransaction, update: TodoUpdate) => {
     // In a real app you may want to validate the incoming data is in fact a
     // TodoUpdate. Check out https://www.npmjs.com/package/@rocicorp/rails for
-    // some heper functions to do this.
+    // some helper functions to do this.
     const prev = await tx.get<Todo>(`todo/${update.id}`);
     const next = {...prev, ...update};
     await tx.set(`todo/${next.id}`, next);

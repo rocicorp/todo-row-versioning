@@ -1,27 +1,23 @@
 import {Todo, TodoUpdate} from 'shared';
+import {For} from 'solid-js';
 import {TodoItem} from './todo-item';
 
-const TodoList = ({
-  todos,
-  onUpdateTodo,
-  onDeleteTodo,
-}: {
+const TodoList = (props: {
   todos: Todo[];
   onUpdateTodo: (update: TodoUpdate) => void;
   onDeleteTodo: (id: string) => void;
-}) => {
-  return (
-    <ul className="todo-list">
-      {todos.map(todo => (
+}) => (
+  <ul class="todo-list">
+    <For each={props.todos}>
+      {todo => (
         <TodoItem
           todo={todo}
-          key={todo.id}
-          onUpdate={update => onUpdateTodo(update)}
-          onDelete={() => onDeleteTodo(todo.id)}
+          onUpdate={update => props.onUpdateTodo(update)}
+          onDelete={() => props.onDeleteTodo(todo.id)}
         />
-      ))}
-    </ul>
-  );
-};
+      )}
+    </For>
+  </ul>
+);
 
 export default TodoList;

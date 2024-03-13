@@ -45,21 +45,21 @@ export async function push(userID: string, requestBody: ReadonlyJSONValue) {
   };
 
   for (const mutation of push.mutations) {
-    const {error, affected} = await processMutation(
-      userID,
-      push.clientGroupID,
-      mutation,
-      false,
-    );
-    if (error) {
-      await processMutation(userID, push.clientGroupID, mutation, true);
-    } else {
+    try {
+      const affected = await processMutation(
+        userID,
+        push.clientGroupID,
+        mutation,
+        false,
+      );
       for (const listID of affected.listIDs) {
         allAffected.listIDs.add(listID);
       }
       for (const userID of affected.userIDs) {
         allAffected.userIDs.add(userID);
       }
+    } catch (e) {
+      await processMutation(userID, push.clientGroupID, mutation, true);
     }
   }
 
@@ -83,7 +83,7 @@ async function processMutation(
   // 1: `let errorMode = false`. In JS, we implement this step naturally
   // as a param. In case of failure, caller will call us again with `true`.
   errorMode: boolean,
-): Promise<{error: boolean; affected: Affected}> {
+): Promise<Affected> {
   // 2: beginTransaction
   return await transact(async executor => {
     let affected: Affected = {listIDs: [], userIDs: []};
@@ -113,7 +113,7 @@ async function processMutation(
       console.log(
         `Mutation ${mutation.id} has already been processed - skipping`,
       );
-      return {affected, error: false};
+      return affected;
     }
 
     // 9: Rollback and error if from future.
@@ -134,7 +134,7 @@ async function processMutation(
         console.error(
           `Error executing mutation: ${JSON.stringify(mutation)}: ${e}`,
         );
-        return {error: true, affected};
+        throw e;
       }
     }
 
@@ -151,7 +151,7 @@ async function processMutation(
     ]);
 
     console.log('Processed mutation in', Date.now() - t1);
-    return {error: false, affected};
+    return affected;
   });
 }
 

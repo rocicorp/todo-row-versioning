@@ -25,14 +25,18 @@ const App = ({
   const [listID, setListID] = useState('');
   const [showingShare, setShowingShare] = useState(false);
 
-  router.on('/list/:listID', match => {
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const {data} = match!;
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const {listID} = data!;
-    setListID(listID);
+  useEffect(() => {
+    router.on('/list/:listID', match => {
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const {data} = match!;
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const {listID} = data!;
+      setListID(listID);
+    });
+    return () => {
+      router.off('/list/:listID');
+    };
   });
-
   useEffect(() => {
     router.resolve();
   }, []);

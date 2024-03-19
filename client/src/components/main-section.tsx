@@ -9,7 +9,7 @@ const MainSection = ({
   onDeleteTodos,
   onCompleteTodos,
 }: {
-  todos: Todo[];
+  todos: readonly Todo[];
   onUpdateTodo: (update: TodoUpdate) => void;
   onDeleteTodos: (ids: string[]) => void;
   onCompleteTodos: (completed: boolean, ids: string[]) => void;

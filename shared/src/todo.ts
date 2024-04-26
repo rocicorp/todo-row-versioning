@@ -26,7 +26,6 @@ export const {
 } = generate('todo', todoSchema.parse);
 
 export async function todosByList(tx: ReadTransaction, listID: string) {
-  // TODO: would be better to use an index, but rails doesn't support yet.
   const allTodos = await listTodos(tx);
   return allTodos.filter(todo => todo.listID === listID);
 }

@@ -1,19 +1,19 @@
-import {useSubscribe} from 'replicache-react';
-import {M} from '../mutators';
-import {Replicache} from 'replicache';
-import {listShares} from 'shared';
-import {FormEvent} from 'react';
 import {Dialog} from '@headlessui/react';
 import {nanoid} from 'nanoid';
+import {FormEvent} from 'react';
+import {Replicache} from 'replicache';
+import {Share as ShareType} from 'shared';
+import {M} from '../mutators';
+import {useQuery, useTable} from '../use-query.js';
 
 export function Share({rep, listID}: {rep: Replicache<M>; listID: string}) {
-  const guests = useSubscribe(
-    rep,
-    async tx => {
-      const allShares = await listShares(tx);
-      return allShares.filter(a => a.listID === listID);
-    },
-    {default: []},
+  const shareTable = useTable<ShareType>(rep, 'share');
+  const guests = useQuery(
+    shareTable
+      .select('id', 'listID', 'userID')
+      .asc('userID')
+      .where('listID', '=', listID),
+    [listID],
   );
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {

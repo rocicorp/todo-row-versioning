@@ -29,7 +29,7 @@
     "shared"
   ],
   "dependencies": {
-    "@rocicorp/rails": "0.11.0",
+    "@rocicorp/rails": "0.11.1",
     "replicache": "^15.0.1"
   }
 }

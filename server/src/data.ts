@@ -302,7 +302,7 @@ export async function getClient(
   clientGroupID: string,
 ): Promise<ClientRecord> {
   const {rows} = await executor(
-    `select clientgroupid, lastmutationid from replicache_client where id = $1`,
+    `select id, clientgroupid, lastmutationid from replicache_client where id = $1`,
     [clientID],
   );
   if (!rows || rows.length === 0)

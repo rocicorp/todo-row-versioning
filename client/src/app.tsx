@@ -16,10 +16,12 @@ const App = ({
   rep,
   userID,
   onUserIDChange,
+  ready,
 }: {
   rep: Replicache<M>;
   userID: string;
   onUserIDChange: (userID: string) => void;
+  ready: boolean;
 }) => {
   const router = new Navigo('/');
   const [listID, setListID] = useState('');
@@ -107,6 +109,9 @@ const App = ({
   };
 
   // Render app.
+  if (!ready) {
+    return null;
+  }
 
   return (
     <div id="layout">

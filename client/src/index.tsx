@@ -16,6 +16,7 @@ async function init() {
   function Root() {
     const [userID, setUserID] = useState('');
     const [r, setR] = useState<Replicache<M> | null>(null);
+    const [ready, setReady] = useState(false);
 
     useEffect(() => {
       if (!userID) {
@@ -30,6 +31,11 @@ async function init() {
         pullURL: `/api/replicache/pull?userID=${userID}`,
         logLevel: 'debug',
       });
+      r.onSync = (syncing: boolean) => {
+        if (!syncing) {
+          setReady(true);
+        }
+      };
       setR(r);
       return () => {
         void r.close();
@@ -63,6 +69,7 @@ async function init() {
           rep={r}
           userID={userID}
           onUserIDChange={userID => handleUserIDChange(userID)}
+          ready={ready}
         />
       )
     );
